@@ -43,7 +43,7 @@ class SecretController extends Controller
                     $fail("Guest users are not allowed to attach files.");
                 }
             }],
-            'files.*' => 'nullable|file',
+            'files.*' => 'nullable|file|max:102400',
             'file_metadata' => 'nullable|string',
         ]);
 
@@ -223,16 +223,22 @@ class SecretController extends Controller
 
         $headers = [
             'Content-Type' => 'application/octet-stream',
-            'Content-Disposition' => 'attachment; filename="' . basename($path) . '"',
         ];
 
-        $content = Storage::disk('r2')->get($path);
+        return response()->streamDownload(function () use ($path, $burn) {
+            $stream = Storage::disk('r2')->readStream($path);
+            
+            if ($stream) {
+                fpassthru($stream);
+                if (is_resource($stream)) {
+                    fclose($stream);
+                }
+            }
 
-        if ($burn == '1') {
-            Storage::disk('r2')->delete($path);
-        }
-
-        return response($content, 200, $headers);
+            if ($burn == '1') {
+                Storage::disk('r2')->delete($path);
+            }
+        }, basename($path), $headers);
     }
 
     public function destroy($secretId)

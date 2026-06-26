@@ -34,15 +34,15 @@ class AppServiceProvider extends ServiceProvider
             if ($user) {
                 $limitKey = 'user:' . $user->id;
                 return [
-                    Limit::perMinute(20)->by($limitKey),
+                    Limit::perMinute(15)->by($limitKey),
                     Limit::perHour(200)->by($limitKey),
                 ];
             }
             
             $limitKey = 'guest:' . $request->ip();
             return [
-                Limit::perMinute(5)->by($limitKey),
-                Limit::perHour(50)->by($limitKey),
+                Limit::perMinute(20)->by($limitKey),
+                Limit::perHour(400)->by($limitKey),
             ];
         });
 
@@ -52,15 +52,15 @@ class AppServiceProvider extends ServiceProvider
             if ($user) {
                 $limitKey = 'user:' . $user->id;
                 return [
-                    Limit::perMinute(60)->by($limitKey),
-                    Limit::perHour(600)->by($limitKey),
+                    Limit::perMinute(30)->by($limitKey),
+                    Limit::perHour(300)->by($limitKey),
                 ];
             }
 
             $limitKey = 'guest:' . $request->ip();
             return [
-                Limit::perMinute(15)->by($limitKey),
-                Limit::perHour(150)->by($limitKey),
+                Limit::perMinute(50)->by($limitKey),
+                Limit::perHour(500)->by($limitKey),
             ];
         });
 

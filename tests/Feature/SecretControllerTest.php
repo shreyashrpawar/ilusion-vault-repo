@@ -116,10 +116,10 @@ test('downloading file via signed route streams the file and deletes it if burn 
     ]);
 
     $response->assertOk();
-    $response->assertHeader('Content-Disposition', 'attachment; filename="' . basename($path) . '"');
+    $response->assertHeader('Content-Disposition', 'attachment; filename=' . basename($path));
     
     // File content is verified
-    expect($response->getContent())->toBe($file->get());
+    expect($response->streamedContent())->toBe($file->get());
 
     // File should be deleted from storage due to burn parameter
     Storage::disk('r2')->assertMissing($path);
