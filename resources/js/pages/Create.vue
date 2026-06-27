@@ -248,7 +248,11 @@ async function handleCreateSecret() {
         }
     } catch (error: any) {
         console.error('Error creating secret:', error);
-        toast.error('Failed to create secret. ' + (error.response?.data?.message || error.message));
+        if (error.response?.status === 422 && error.response?.data?.errors?.custom_address) {
+            toast.error(error.response.data.errors.custom_address[0]);
+        } else {
+            toast.error('Failed to create secret. ' + (error.response?.data?.message || error.message));
+        }
     } finally {
         isSubmitting.value = false;
     }
@@ -629,13 +633,20 @@ return '';
                                 placeholder="e.g., Instagram Password"
                             />
                         </div>
-                        <div class="flex flex-col gap-2 md:col-span-6">
-                            <label class="font-label-sm text-label-sm uppercase text-vault-secondary select-none" for="custom-address">Custom Address (Optional)</label>
+                        <div class="flex flex-col gap-2 md:col-span-6 relative">
+                            <div class="flex items-center justify-between">
+                                <label class="font-label-sm text-label-sm uppercase text-vault-secondary select-none" for="custom-address">Custom Address (Optional)</label>
+                                <span v-if="!$page.props.auth?.user" class="text-[0.625rem] text-vault-primary font-bold uppercase tracking-wider">Login Required</span>
+                            </div>
                             <input
                                 v-model="customAddress"
                                 type="text"
                                 id="custom-address"
-                                class="w-full bg-vault-surface-container-lowest border border-vault-outline-variant rounded py-3 px-4 font-body-md text-body-md text-vault-on-surface focus:outline-none focus:border-vault-primary focus:ring-1 focus:ring-vault-primary transition-all placeholder:text-vault-outline"
+                                :disabled="!$page.props.auth?.user"
+                                minlength="5"
+                                pattern="[a-zA-Z0-9\-]+"
+                                :class="{'opacity-60 cursor-not-allowed': !$page.props.auth?.user}"
+                                class="w-full bg-vault-surface-container-lowest border border-vault-outline-variant rounded py-3 px-4 font-body-md text-body-md text-vault-on-surface focus:outline-none focus:border-vault-primary focus:ring-1 focus:ring-vault-primary transition-all placeholder:text-vault-outline disabled:bg-vault-surface-container-low"
                                 placeholder="Add custom address"
                             />
                         </div>

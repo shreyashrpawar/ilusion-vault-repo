@@ -25,7 +25,18 @@ class SecretController extends Controller
             }],
             'burn_on_read' => 'boolean',
             'identifier' => 'nullable|string|max:255',
-            'custom_address' => 'nullable|string|unique:secrets,secret_id',
+            'custom_address' => [
+                'nullable', 
+                'string', 
+                'min:5', 
+                'alpha_dash',
+                'unique:secrets,secret_id',
+                function ($attribute, $value, $fail) use ($user) {
+                    if (!$user && !empty($value)) {
+                        $fail("Guest users are not allowed to use a custom address.");
+                    }
+                }
+            ],
             'recipient_email' => ['nullable', 'string', function ($attribute, $value, $fail) use ($user) {
                 if (!$user && !empty($value)) {
                     $fail("Guest users are not allowed to send notifications to recipient emails.");
