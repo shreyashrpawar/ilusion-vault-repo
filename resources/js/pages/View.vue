@@ -86,6 +86,17 @@ async function handleDecrypt() {
             fetchedSecretPayload.value.encrypted_payload,
             decryptionKey.value.trim()
         );
+
+        if (fetchedSecretPayload.value.burn_on_read) {
+            try {
+                await axios.post(`/api/secrets/${fetchedSecretPayload.value.secret_id}/burn`);
+            } catch (burnError: any) {
+                console.error('Failed to burn secret:', burnError);
+                decryptError.value = 'This secret has already been burned and cannot be viewed.';
+                return;
+            }
+        }
+
         decryptedPayload.value = decrypted;
         
         decryptedFiles.value = [];

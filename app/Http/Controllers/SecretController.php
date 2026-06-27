@@ -195,17 +195,31 @@ class SecretController extends Controller
         }
 
         $payload = [
+            'secret_id' => $secret->secret_id,
             'encrypted_payload' => $secret->encrypted_payload,
             'encryption_hint' => $secret->encryption_hint,
             'file_paths' => $filePaths,
             'burn_on_read' => $secret->burn_on_read,
         ];
 
-        if ($secret->burn_on_read) {
-            $secret->delete();
+        return response()->json($payload);
+    }
+
+    public function burn($secretId)
+    {
+        $secret = Secret::where('secret_id', $secretId)->first();
+
+        if (!$secret || $secret->expiry_date < Carbon::now()) {
+            return response()->json(['message' => 'Secret not found or expired.'], 404);
         }
 
-        return response()->json($payload);
+        if (!$secret->burn_on_read) {
+            return response()->json(['message' => 'This secret is not configured to burn on read.'], 400);
+        }
+
+        $secret->delete();
+
+        return response()->json(['message' => 'Secret burned successfully.']);
     }
 
     public function downloadFile(Request $request)

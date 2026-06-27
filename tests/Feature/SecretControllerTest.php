@@ -92,7 +92,14 @@ test('retrieving secret returns signed routes and deletes secret if burn_on_read
     expect($downloadUrl)->toContain('burn=1');
     expect($downloadUrl)->toContain('path=secrets%2F');
 
-    // Secret should be deleted from DB because of burn_on_read
+    // Secret should NOT be deleted from DB because of new client-side burn flow
+    expect(Secret::where('secret_id', 'burnable_secret')->exists())->toBeTrue();
+
+    // Call burn API
+    $burnResponse = $this->postJson(route('secrets.burn', 'burnable_secret'));
+    $burnResponse->assertOk();
+
+    // Secret should now be deleted from DB
     expect(Secret::where('secret_id', 'burnable_secret')->exists())->toBeFalse();
 });
 

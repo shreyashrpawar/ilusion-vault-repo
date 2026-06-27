@@ -113,6 +113,7 @@ Route::get('/api/secrets/{secretId}', [SecretController::class, 'show'])
     ->middleware('throttle:secrets.view')
     ->name('secrets.show');
 Route::delete('/api/secrets/{secretId}', [SecretController::class, 'destroy'])->name('secrets.destroy');
+Route::post('/api/secrets/{secretId}/burn', [SecretController::class, 'burn'])->name('secrets.burn');
 Route::get('/api/secrets/file/download', [SecretController::class, 'downloadFile'])
     ->name('secrets.file.download')
     ->middleware('signed');
