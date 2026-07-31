@@ -216,7 +216,7 @@ function toggleFaq(index: number) {
                         <span class="font-body-md text-body-md text-vault-on-surface-variant select-none hidden sm:flex items-center mr-2 gap-1.5">
                             Hello <span class="font-semibold text-vault-on-surface">{{ $page.props.auth.user.name }}</span>
                         </span>
-                        <Link :href="profile()" class="bg-vault-surface-container-lowest border border-vault-outline-variant text-vault-on-surface font-label-md text-label-md py-2 px-4 rounded hover:bg-vault-surface-container-low transition-colors duration-200 scale-95 hover:scale-100 ease-in-out inline-flex items-center justify-center mr-2">Profile</Link>
+                    <Link href="/" class="bg-vault-surface-container-lowest border border-vault-outline-variant text-vault-on-surface font-label-md text-label-md py-2 px-4 rounded hover:bg-vault-surface-container-low transition-colors duration-200 scale-95 hover:scale-100 ease-in-out inline-flex items-center justify-center mr-2">Open Vault</Link>
                         <Link :href="logout().url" method="post" as="button" class="bg-vault-surface-container-lowest border border-vault-outline-variant text-vault-on-surface font-label-md text-label-md py-2 px-4 rounded hover:bg-vault-surface-container-low transition-colors duration-200 scale-95 hover:scale-100 ease-in-out inline-flex items-center justify-center">Logout</Link>
                     </template>
                     <template v-else>

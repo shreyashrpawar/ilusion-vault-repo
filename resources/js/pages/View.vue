@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
 import axios from 'axios';
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { toast } from 'vue-sonner';
 import { Toaster } from '@/components/ui/sonner';
 import { useConfirm } from '@/composables/useConfirm';
@@ -12,7 +12,9 @@ import {
     base64ToArrayBuffer,
     deriveKey
 } from '@/lib/crypto';
-import { profile, login, home, logout } from '@/routes';
+import { login, home, logout } from '@/routes';
+import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 
 const { confirm } = useConfirm();
 
@@ -35,9 +37,24 @@ const decryptedFiles = ref<Array<{
     type: string;
     isDecrypting: boolean;
     decryptedDataUrl?: string;
+    decryptedTextContent?: string;
 }>>([]);
 
+const isPreviewModalOpen = ref(false);
+const previewingFile = ref<{ name: string; type: string; url: string; textContent?: string } | null>(null);
+
 const decryptedCopied = ref(false);
+
+const renderedMarkdown = computed(() => {
+    if (!decryptedPayload.value) return '';
+    try {
+        const rawHtml = marked.parse(decryptedPayload.value, { async: false }) as string;
+        return DOMPurify.sanitize(rawHtml);
+    } catch (e) {
+        console.error('Failed to parse markdown:', e);
+        return decryptedPayload.value;
+    }
+});
 
 async function handleRetrieve() {
     if (!retrieveId.value.trim()) {
@@ -59,11 +76,6 @@ return;
 
         const response = await axios.get(`/api/secrets/${id}`);
         fetchedSecretPayload.value = response.data;
-
-        // Auto decrypt if hash key is present
-        if (decryptionKey.value) {
-            handleDecrypt();
-        }
     } catch (error: any) {
         console.error('Error retrieving secret:', error);
         toast.error(error.response?.data?.message || 'Secret not found or expired.');
@@ -139,10 +151,6 @@ continue;
                     isDecrypting: false
                 });
             }
-            
-            for (let i = 0; i < decryptedFiles.value.length; i++) {
-                downloadAndDecryptFile(i);
-            }
         }
     } catch (error: any) {
         console.error('Decryption failed:', error);
@@ -203,6 +211,109 @@ function triggerDownload(url: string, filename: string) {
     document.body.removeChild(a);
 }
 
+function getFileTypeByName(name: string): string {
+    const ext = name.split('.').pop()?.toLowerCase();
+    if (!ext) return 'application/octet-stream';
+    const mimeTypes: Record<string, string> = {
+        'png': 'image/png',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'gif': 'image/gif',
+        'svg': 'image/svg+xml',
+        'webp': 'image/webp',
+        'pdf': 'application/pdf',
+        'txt': 'text/plain',
+        'json': 'application/json',
+        'md': 'text/markdown',
+        'js': 'text/javascript',
+        'ts': 'text/typescript',
+        'css': 'text/css',
+        'html': 'text/html',
+        'mp3': 'audio/mpeg',
+        'wav': 'audio/wav',
+        'mp4': 'video/mp4',
+        'webm': 'video/webm'
+    };
+    return mimeTypes[ext] || 'application/octet-stream';
+}
+
+function getFileIcon(type: string, name: string): string {
+    const t = (type || getFileTypeByName(name)).toLowerCase();
+    if (t.startsWith('image/')) return 'image';
+    if (t.startsWith('video/')) return 'movie';
+    if (t.startsWith('audio/')) return 'audio_file';
+    if (t.includes('pdf')) return 'picture_as_pdf';
+    if (t.includes('text/') || t.includes('json') || t.includes('javascript') || t.includes('typescript')) return 'description';
+    if (t.includes('zip') || t.includes('tar') || t.includes('rar') || t.includes('compressed')) return 'zip_box';
+    return 'draft';
+}
+
+async function handlePreviewFile(index: number) {
+    const file = decryptedFiles.value[index];
+    if (!file) return;
+
+    let dataUrl = file.decryptedDataUrl;
+    let textContent = file.decryptedTextContent;
+
+    if (!dataUrl) {
+        file.isDecrypting = true;
+        try {
+            const payloadFile = fetchedSecretPayload.value.file_paths[index];
+            const response = await axios.get(payloadFile.download_url, {
+                responseType: 'arraybuffer',
+                headers: {
+                    'X-Vault-Decrypted': '1'
+                }
+            });
+            
+            const { decryptedFile } = await decryptFile(
+                response.data,
+                decryptionKey.value.trim(),
+                payloadFile.encrypted_metadata,
+                payloadFile.salt,
+                payloadFile.iv
+            );
+            
+            dataUrl = URL.createObjectURL(decryptedFile);
+            file.decryptedDataUrl = dataUrl;
+            
+            const isText = file.type.startsWith('text/') || 
+                           file.name.endsWith('.txt') || 
+                           file.name.endsWith('.json') || 
+                           file.name.endsWith('.md') || 
+                           file.name.endsWith('.js') || 
+                           file.name.endsWith('.ts') ||
+                           file.name.endsWith('.css') ||
+                           file.name.endsWith('.html');
+            if (isText) {
+                const text = await decryptedFile.text();
+                textContent = text;
+                file.decryptedTextContent = text;
+            }
+        } catch (error: any) {
+            console.error('File decryption for preview failed:', error);
+            toast.error('Failed to decrypt file for preview.');
+            file.isDecrypting = false;
+            return;
+        } finally {
+            file.isDecrypting = false;
+        }
+    }
+
+    previewingFile.value = {
+        name: file.name,
+        type: file.type || getFileTypeByName(file.name),
+        url: dataUrl || '',
+        textContent: textContent
+    };
+    isPreviewModalOpen.value = true;
+}
+
+function closePreview() {
+    isPreviewModalOpen.value = false;
+    previewingFile.value = null;
+}
+
 function handleCopyDecrypted() {
     if (!decryptedPayload.value) {
 return;
@@ -216,6 +327,12 @@ return;
 }
 
 function handleClearRetrieved() {
+    decryptedFiles.value.forEach(file => {
+        if (file.decryptedDataUrl) {
+            URL.revokeObjectURL(file.decryptedDataUrl);
+        }
+    });
+
     fetchedSecretPayload.value = null;
     decryptedPayload.value = null;
     decryptedHint.value = null;
@@ -244,17 +361,18 @@ return '';
 }
 
 onMounted(() => {
-    // Read the encryption key from URL hash if available
-    const hashKey = window.location.hash.slice(1);
-
-    if (hashKey) {
-        decryptionKey.value = hashKey;
-    }
-
     if (props.initialSecretId) {
         retrieveId.value = props.initialSecretId;
         handleRetrieve();
     }
+});
+
+onUnmounted(() => {
+    decryptedFiles.value.forEach(file => {
+        if (file.decryptedDataUrl) {
+            URL.revokeObjectURL(file.decryptedDataUrl);
+        }
+    });
 });
 </script>
 
@@ -281,7 +399,7 @@ onMounted(() => {
                             Hello <span class="font-semibold text-vault-on-surface">{{ $page.props.auth.user.name }}</span>
                         </span>
                         <Link
-                            :href="profile()"
+                            href="/"
                             class="bg-vault-surface-container-lowest border border-vault-outline-variant text-vault-on-surface font-label-md text-label-md py-2 px-4 rounded hover:bg-vault-surface-container-low transition-colors duration-200 scale-95 hover:scale-100 ease-in-out inline-flex items-center justify-center mr-2"
                         >
                             Profile
@@ -388,30 +506,62 @@ onMounted(() => {
                                     {{ decryptedCopied ? 'Copied' : 'Copy' }}
                                 </button>
                             </div>
-                            <pre class="w-full bg-vault-surface-container-low border border-vault-outline-variant rounded p-4 font-mono-custom text-sm text-vault-on-surface overflow-x-auto break-all whitespace-pre-wrap select-text max-h-[25rem] overflow-y-auto">{{ decryptedPayload }}</pre>
+                            <div 
+                                v-html="renderedMarkdown" 
+                                class="w-full bg-vault-surface-container-low border border-vault-outline-variant rounded p-5 text-sm text-vault-on-surface overflow-x-auto select-text max-h-[25rem] overflow-y-auto markdown-body"
+                            ></div>
                             
                             <div v-if="decryptedHint" class="bg-vault-primary/10 border border-vault-primary/30 p-4 rounded text-vault-on-surface text-sm animate-[fadeIn_0.5s_ease-out]">
                                 <strong class="text-vault-primary block mb-1">Additional Info</strong> 
                                 <span class="font-body-md">{{ decryptedHint }}</span>
                             </div>
                             
-                            <div v-if="decryptedFiles.length > 0" class="flex flex-col gap-2 mt-4">
-                                <label class="font-label-sm text-label-sm uppercase text-vault-secondary select-none">Attached Files</label>
-                                <ul class="flex flex-col gap-2">
-                                    <li 
+                            <div v-if="decryptedFiles.length > 0" class="flex flex-col gap-3 mt-6">
+                                <label class="font-label-sm text-label-sm uppercase text-vault-secondary select-none border-b border-vault-outline-variant/30 pb-2">Attached Files</label>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div 
                                         v-for="(file, i) in decryptedFiles" 
                                         :key="i" 
-                                        @click="downloadAndDecryptFile(i)"
-                                        class="bg-vault-surface-container-low hover:bg-vault-surface-container-high border border-vault-outline-variant p-3 rounded flex items-center justify-between cursor-pointer transition-colors group"
+                                        class="bg-vault-surface-container-lowest border border-vault-outline-variant/60 hover:border-vault-primary/50 rounded-xl p-4 flex flex-col gap-3 shadow-sm hover:shadow-md transition-all duration-300 group relative"
                                     >
-                                        <span class="font-mono-custom text-sm text-vault-on-surface truncate pr-4 group-hover:text-vault-primary transition-colors">{{ file.name }}</span>
-                                        <div class="text-vault-primary font-label-sm text-xs flex items-center gap-1 shrink-0 select-none">
-                                            <span class="material-symbols-outlined text-[1rem] animate-spin" v-if="file.isDecrypting">sync</span>
-                                            <span class="material-symbols-outlined text-[1rem]" v-else>download</span>
-                                            {{ file.isDecrypting ? 'Decrypting...' : 'Download' }}
+                                        <div class="flex items-start gap-3">
+                                            <div class="w-10 h-10 rounded-lg bg-vault-primary/10 text-vault-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                                                <span class="material-symbols-outlined text-[1.25rem]">
+                                                    {{ getFileIcon(file.type, file.name) }}
+                                                </span>
+                                            </div>
+                                            <div class="flex flex-col overflow-hidden w-full">
+                                                <span class="font-body-md font-semibold text-vault-on-surface truncate pr-2 group-hover:text-vault-primary transition-colors" :title="file.name">{{ file.name }}</span>
+                                                <span class="text-xs text-vault-secondary truncate uppercase tracking-wider mt-0.5">{{ file.type || 'Unknown Type' }}</span>
+                                            </div>
                                         </div>
-                                    </li>
-                                </ul>
+                                        
+                                        <div class="mt-auto flex gap-2">
+                                            <button
+                                                @click="handlePreviewFile(i)"
+                                                :disabled="file.isDecrypting"
+                                                class="flex-1 bg-vault-surface-container-low hover:bg-vault-surface-container hover:text-vault-on-surface text-vault-on-surface-variant font-label-md text-xs py-2 px-2.5 rounded-lg border border-vault-outline-variant/50 flex justify-center items-center gap-1.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                                title="Preview File"
+                                            >
+                                                <span class="material-symbols-outlined text-[1rem]" :class="{ 'animate-spin': file.isDecrypting }">
+                                                    {{ file.isDecrypting ? 'sync' : 'visibility' }}
+                                                </span>
+                                                Preview
+                                            </button>
+                                            <button
+                                                @click="downloadAndDecryptFile(i)"
+                                                :disabled="file.isDecrypting"
+                                                class="flex-1 bg-vault-primary hover:bg-vault-primary-container text-vault-on-primary font-label-md text-xs py-2 px-2.5 rounded-lg flex justify-center items-center gap-1.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                                title="Download File"
+                                            >
+                                                <span class="material-symbols-outlined text-[1rem]" :class="{ 'animate-spin': file.isDecrypting }">
+                                                    {{ file.isDecrypting ? 'sync' : 'download' }}
+                                                </span>
+                                                Download
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -450,6 +600,97 @@ onMounted(() => {
                 </a>
             </div>
         </footer>
+
+        <!-- Inline Preview Modal -->
+        <div v-if="isPreviewModalOpen && previewingFile" class="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 md:p-10">
+            <!-- Backdrop -->
+            <div @click="closePreview" class="absolute inset-0 bg-vault-on-background/40 backdrop-blur-sm transition-opacity"></div>
+            
+            <!-- Modal Body -->
+            <div class="relative bg-vault-surface border border-vault-outline-variant rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col z-[110] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <!-- Header -->
+                <div class="px-6 py-4 border-b border-vault-outline-variant/60 flex justify-between items-center bg-vault-surface-container-low">
+                    <div class="flex items-center gap-3 overflow-hidden">
+                        <span class="material-symbols-outlined text-vault-primary text-xl shrink-0">
+                            {{ getFileIcon(previewingFile.type, previewingFile.name) }}
+                        </span>
+                        <div class="flex flex-col truncate">
+                            <span class="font-bold text-vault-on-surface text-sm truncate" :title="previewingFile.name">{{ previewingFile.name }}</span>
+                            <span class="text-[0.6875rem] text-vault-secondary uppercase tracking-wider">{{ previewingFile.type }}</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0">
+                        <button 
+                            @click="triggerDownload(previewingFile.url, previewingFile.name)"
+                            class="p-2 text-vault-secondary hover:text-vault-primary transition-colors hover:bg-vault-surface-container rounded-lg flex items-center justify-center"
+                            title="Download File"
+                        >
+                            <span class="material-symbols-outlined text-[1.25rem]">download</span>
+                        </button>
+                        <button 
+                            @click="closePreview"
+                            class="p-2 text-vault-secondary hover:text-red-500 transition-colors hover:bg-vault-surface-container rounded-lg flex items-center justify-center"
+                            title="Close Preview"
+                        >
+                            <span class="material-symbols-outlined text-[1.25rem]">close</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Preview Area -->
+                <div class="flex-grow overflow-auto p-6 flex flex-col justify-center items-center bg-vault-surface-container-lowest min-h-[40vh]">
+                    <!-- Image Preview -->
+                    <template v-if="previewingFile.type.startsWith('image/')">
+                        <div class="relative max-w-full max-h-[60vh] flex items-center justify-center rounded-lg overflow-hidden border border-vault-outline-variant/30 shadow-xs bg-white/5">
+                            <img :src="previewingFile.url" :alt="previewingFile.name" class="max-w-full max-h-[60vh] object-contain" />
+                        </div>
+                    </template>
+
+                    <!-- PDF Preview -->
+                    <template v-else-if="previewingFile.type.includes('pdf')">
+                        <iframe :src="previewingFile.url" class="w-full h-[60vh] rounded-lg border border-vault-outline-variant/30 shadow-xs bg-white/5" border="0"></iframe>
+                    </template>
+
+                    <!-- Text Preview -->
+                    <template v-else-if="previewingFile.textContent !== undefined">
+                        <pre class="w-full text-left bg-vault-surface-container-low/50 border border-vault-outline-variant/40 p-5 rounded-xl text-xs font-mono text-vault-on-surface overflow-auto max-h-[60vh] whitespace-pre-wrap break-all leading-relaxed shadow-inner"><code>{{ previewingFile.textContent }}</code></pre>
+                    </template>
+
+                    <!-- Audio Preview -->
+                    <template v-else-if="previewingFile.type.startsWith('audio/')">
+                        <div class="p-8 bg-vault-surface rounded-2xl border border-vault-outline-variant flex flex-col items-center gap-4 max-w-sm w-full shadow-sm">
+                            <span class="material-symbols-outlined text-4xl text-vault-primary animate-pulse">music_note</span>
+                            <audio :src="previewingFile.url" controls class="w-full"></audio>
+                        </div>
+                    </template>
+
+                    <!-- Video Preview -->
+                    <template v-else-if="previewingFile.type.startsWith('video/')">
+                        <div class="relative max-w-full max-h-[60vh] rounded-lg overflow-hidden border border-vault-outline-variant/30 shadow-xs bg-black">
+                            <video :src="previewingFile.url" controls class="max-w-full max-h-[60vh]"></video>
+                        </div>
+                    </template>
+
+                    <!-- Fallback / Unsupported Preview -->
+                    <template v-else>
+                        <div class="flex flex-col items-center justify-center text-center p-8 max-w-sm">
+                            <div class="w-16 h-16 bg-vault-surface-container-low rounded-2xl flex items-center justify-center mb-4 text-vault-secondary border border-vault-outline-variant/50">
+                                <span class="material-symbols-outlined text-3xl">visibility_off</span>
+                            </div>
+                            <h3 class="font-bold text-vault-on-surface mb-1 text-sm font-headline-md">No Preview Available</h3>
+                            <p class="text-xs text-vault-secondary mb-6">Preview is not supported for this file type. You can download the file to view it on your device.</p>
+                            <button 
+                                @click="triggerDownload(previewingFile.url, previewingFile.name)"
+                                class="bg-vault-primary text-vault-on-primary font-label-md text-xs py-2.5 px-6 rounded-lg hover:bg-vault-primary-container transition-colors inline-flex items-center gap-1.5 shadow-sm"
+                            >
+                                <span class="material-symbols-outlined text-[1rem]">download</span>
+                                Download File
+                            </button>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
 
         <ConfirmModal />
         <Toaster />
@@ -568,5 +809,87 @@ onMounted(() => {
         opacity: 1;
         transform: translateY(0);
     }
+}
+
+.markdown-body {
+    line-height: 1.6;
+}
+.markdown-body :deep(h1),
+.markdown-body :deep(h2),
+.markdown-body :deep(h3),
+.markdown-body :deep(h4) {
+    font-weight: 700;
+    margin-top: 1.25rem;
+    margin-bottom: 0.75rem;
+    color: var(--vault-on-surface);
+}
+.markdown-body :deep(h1) { font-size: 1.5rem; border-bottom: 1px solid rgba(195, 198, 215, 0.3); padding-bottom: 0.3rem; }
+.markdown-body :deep(h2) { font-size: 1.25rem; border-bottom: 1px solid rgba(195, 198, 215, 0.15); padding-bottom: 0.2rem; }
+.markdown-body :deep(h3) { font-size: 1.1rem; }
+.markdown-body :deep(p) {
+    margin-bottom: 0.75rem;
+}
+.markdown-body :deep(ul) {
+    list-style-type: disc;
+    padding-left: 1.5rem;
+    margin-bottom: 0.75rem;
+}
+.markdown-body :deep(ol) {
+    list-style-type: decimal;
+    padding-left: 1.5rem;
+    margin-bottom: 0.75rem;
+}
+.markdown-body :deep(li) {
+    margin-bottom: 0.25rem;
+}
+.markdown-body :deep(code) {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85em;
+    background-color: var(--vault-surface-container-lowest, rgba(255, 255, 255, 0.05));
+    padding: 0.15rem 0.3rem;
+    border-radius: 0.25rem;
+}
+.markdown-body :deep(pre) {
+    background-color: var(--vault-surface-container-lowest, rgba(255, 255, 255, 0.05));
+    border: 1px solid rgba(195, 198, 215, 0.5);
+    padding: 1rem;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+    margin-bottom: 0.75rem;
+}
+.markdown-body :deep(pre code) {
+    background-color: transparent;
+    padding: 0;
+    font-size: inherit;
+    color: inherit;
+    border-radius: 0;
+}
+.markdown-body :deep(blockquote) {
+    border-left: 4px solid var(--vault-primary);
+    padding-left: 1rem;
+    color: var(--vault-secondary);
+    margin-bottom: 0.75rem;
+}
+.markdown-body :deep(table) {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1rem;
+}
+.markdown-body :deep(th),
+.markdown-body :deep(td) {
+    border: 1px solid rgba(195, 198, 215, 0.5);
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+}
+.markdown-body :deep(th) {
+    background-color: var(--vault-surface-container-lowest);
+    font-weight: 600;
+}
+.markdown-body :deep(a) {
+    color: var(--vault-primary);
+    text-decoration: underline;
+}
+.markdown-body :deep(a:hover) {
+    color: var(--vault-primary-container);
 }
 </style>

@@ -11,7 +11,7 @@ import {
     encryptText,
     encryptFile,
 } from '@/lib/crypto';
-import { profile, login, home, logout } from '@/routes';
+import { login, home, logout } from '@/routes';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 
@@ -171,6 +171,8 @@ return;
 }
 
 const isSubmitting = ref(false);
+const uploadProgress = ref(0);
+const uploadStage = ref('');
 
 async function handleCreateSecret() {
     if (!payload.value.trim() && attachedFiles.value.length === 0) {
@@ -183,6 +185,8 @@ async function handleCreateSecret() {
     }
 
     isSubmitting.value = true;
+    uploadProgress.value = 5;
+    uploadStage.value = 'Encrypting secret payload...';
 
     try {
         const encKey = password.value;
@@ -213,22 +217,40 @@ async function handleCreateSecret() {
         
         const fileMetadataArray: any[] = [];
 
-        for (let i = 0; i < attachedFiles.value.length; i++) {
-            const file = attachedFiles.value[i];
-            const { encryptedBlob, metadata } = await encryptFile(file, encKey);
-            formData.append('files[]', encryptedBlob, `file_${i}`);
-            fileMetadataArray.push(metadata);
+        if (attachedFiles.value.length > 0) {
+            for (let i = 0; i < attachedFiles.value.length; i++) {
+                const file = attachedFiles.value[i];
+                uploadStage.value = `Encrypting file ${i + 1} of ${attachedFiles.value.length} (${file.name})...`;
+                uploadProgress.value = 10 + Math.round(((i + 1) / attachedFiles.value.length) * 20);
+                const { encryptedBlob, metadata } = await encryptFile(file, encKey);
+                formData.append('files[]', encryptedBlob, `file_${i}`);
+                fileMetadataArray.push(metadata);
+            }
         }
         
         if (fileMetadataArray.length > 0) {
             formData.append('file_metadata', JSON.stringify(fileMetadataArray));
         }
 
+        uploadStage.value = 'Uploading encrypted secret...';
+        uploadProgress.value = 30;
+
         const response = await axios.post('/api/secrets', formData, {
             headers: {
                 'Accept': 'application/json'
+            },
+            onUploadProgress: (progressEvent) => {
+                if (progressEvent.total) {
+                    const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+                    uploadProgress.value = 30 + Math.round(percent * 0.6);
+                    uploadStage.value = `Uploading payload... ${percent}%`;
+                }
             }
         });
+
+        uploadStage.value = 'Complete!';
+        uploadProgress.value = 100;
+        await new Promise(resolve => setTimeout(resolve, 300));
 
         let finalUrl = response.data.url;
 
@@ -251,10 +273,12 @@ async function handleCreateSecret() {
         if (error.response?.status === 422 && error.response?.data?.errors?.custom_address) {
             toast.error(error.response.data.errors.custom_address[0]);
         } else {
-            toast.error('Failed to create secret. ' + (error.response?.data?.message || error.message));
+            toast.error(error.response?.data?.message || 'Failed to create secret.');
         }
     } finally {
         isSubmitting.value = false;
+        uploadProgress.value = 0;
+        uploadStage.value = '';
     }
 }
 
@@ -418,105 +442,113 @@ return '';
 </script>
 
 <template>
-    <Head title="Create Encrypted Vault & Secure Link | Ilusion Vault">
+    <Head title="Create Encrypted Secret | Ilusion Vault">
         <meta name="description" content="Encrypt and store texts, keys, passwords, and files securely. Generate zero-knowledge sharing links." />
     </Head>
 
-    <div class="vault-light bg-vault-background text-vault-on-background min-h-screen flex flex-col font-body-md antialiased selection:bg-[#dbe1ff] selection:text-[#00174b] relative overflow-x-hidden">
-        <div class="absolute inset-0 bg-dot-grid pointer-events-none z-0"></div>
+    <div class="vault-light bg-vault-background text-vault-on-background min-h-screen flex flex-col font-body-md antialiased selection:bg-[#e4e4e7] selection:text-[#18181b]">
+        
+        <!-- App Navbar (SaaS Style - Consistent with Dashboard) -->
+        <header class="sticky top-0 z-50 bg-vault-surface-container-lowest border-b border-vault-outline-variant shadow-sm px-4 sm:px-6 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-6">
+                <Link href="/" class="flex items-center gap-2 group">
+                    <img src="/ilusion-logo.png" alt="Ilusion" class="w-7 h-7 object-contain group-hover:scale-105 transition-transform" />
+                    <span class="font-headline-md font-bold text-lg tracking-tight text-vault-on-surface">Ilusion Vault</span>
+                </Link>
 
-        <header class="fixed top-0 left-0 right-0 z-50 flex justify-between items-center px-4 sm:px-6 md:px-12 py-3 md:py-4 bg-vault-surface/80 backdrop-blur-xl border-b border-vault-outline-variant shadow-sm transition-all duration-300">
-            <div class="flex items-center gap-4 sm:gap-8 max-w-[75rem] w-full mx-auto">
-                <div class="flex items-center gap-4 sm:gap-8 flex-1">
-                    <Link class="flex items-center gap-2 font-headline-md text-headline-md font-bold text-vault-on-surface hover:opacity-90" :href="home()">
-                        <img src="/ilusion-logo.png" alt="Ilusion" class="w-10 h-10 md:w-12 md:h-12 object-contain" />
-                        Ilusion
+                <nav class="hidden md:flex items-center gap-2 ml-4">
+                    <Link href="/" class="px-3 py-1.5 rounded-md text-sm font-medium text-vault-on-surface-variant hover:text-vault-on-surface hover:bg-vault-surface-container-low transition-colors flex items-center gap-1.5">
+                        <span class="material-symbols-outlined text-[1rem]">arrow_back</span> Dashboard
                     </Link>
-                </div>
-                <div class="flex items-center gap-3">
-                    <Link href="/contact" class="font-label-md text-label-md text-vault-on-surface hover:text-vault-primary transition-colors duration-200 mr-2 uppercase tracking-widest hidden sm:inline-block border-b-2 border-transparent hover:border-vault-primary">Contact</Link>
-                    <template v-if="$page.props.auth?.user">
-                        <span class="font-body-md text-body-md text-vault-on-surface-variant select-none hidden sm:flex items-center mr-2 gap-1.5">
-                            Hello <span class="font-semibold text-vault-on-surface">{{ $page.props.auth.user.name }}</span>
-                        </span>
-                        <Link
-                            :href="profile()"
-                            class="bg-vault-surface-container-lowest border border-vault-outline-variant text-vault-on-surface font-label-md text-label-md py-2 px-4 rounded hover:bg-vault-surface-container-low transition-colors duration-200 scale-95 hover:scale-100 ease-in-out inline-flex items-center justify-center mr-2"
-                        >
-                            Profile
-                        </Link>
-                        <Link
-                            :href="logout().url"
-                            method="post"
-                            as="button"
-                            class="bg-vault-surface-container-lowest border border-vault-outline-variant text-vault-on-surface font-label-md text-label-md py-2 px-4 rounded hover:bg-vault-surface-container-low transition-colors duration-200 scale-95 hover:scale-100 ease-in-out inline-flex items-center justify-center"
-                        >
-                            Logout
-                        </Link>
-                    </template>
-                    <template v-else>
-                        <Link
-                            :href="login()"
-                            class="bg-vault-surface-container-lowest border border-vault-outline-variant text-vault-on-surface font-label-md text-label-md py-2 px-4 rounded hover:bg-vault-surface-container-low transition-colors duration-200 scale-95 hover:scale-100 ease-in-out inline-flex items-center justify-center"
-                        >
-                            Sign In
-                        </Link>
-                    </template>
-                </div>
+                </nav>
+            </div>
+
+            <div class="flex items-center gap-4">
+                <template v-if="$page.props.auth?.user">
+                    <div class="hidden sm:flex items-center gap-3 mr-2">
+                        <div class="text-right">
+                            <p class="text-sm font-medium text-vault-on-surface leading-none">{{ $page.props.auth.user.name }}</p>
+                            <p class="text-xs text-vault-on-surface-variant mt-1">{{ $page.props.auth.user.email }}</p>
+                        </div>
+                        <div class="w-9 h-9 rounded-full bg-vault-primary text-vault-on-primary flex items-center justify-center font-bold text-sm shadow-sm select-none">
+                            {{ $page.props.auth.user.name ? $page.props.auth.user.name[0].toUpperCase() : 'V' }}
+                        </div>
+                    </div>
+                    <div class="h-6 w-px bg-vault-outline-variant hidden sm:block"></div>
+                    <Link href="/settings" class="text-vault-secondary hover:text-vault-on-surface transition-colors p-1 flex items-center justify-center" title="Settings">
+                        <span class="material-symbols-outlined text-[1.25rem]">settings</span>
+                    </Link>
+                    <Link :href="logout().url" method="post" as="button" class="text-vault-secondary hover:text-vault-on-surface transition-colors p-1 flex items-center justify-center" title="Log Out">
+                        <span class="material-symbols-outlined text-[1.25rem]">logout</span>
+                    </Link>
+                </template>
+                <template v-else>
+                    <Link :href="login()" class="bg-vault-primary text-vault-on-primary font-label-md text-xs py-2 px-4 rounded-lg hover:bg-vault-primary-container transition-colors shadow-sm">
+                        Sign In
+                    </Link>
+                </template>
             </div>
         </header>
 
-        <main class="flex-grow flex flex-col items-center justify-center px-4 sm:px-6 md:px-12 pt-24 pb-12 relative z-10 w-full max-w-[75rem] mx-auto animate-[fadeIn_0.3s_ease-out]">
-            <div class="text-center mb-6 max-w-2xl mx-auto px-2">
-                <Link :href="home()" class="inline-flex items-center gap-1 text-vault-primary hover:text-vault-primary-container text-xs font-semibold uppercase tracking-wider mb-4 transition-colors">
-                    <span class="material-symbols-outlined text-[1rem]">arrow_back</span>
-                    Back to Home
-                </Link>
-                <h1 class="font-display text-4xl md:text-[3rem] font-bold text-vault-on-surface mb-2 leading-tight tracking-tight select-none">Create Encrypted Vault</h1>
-                <p class="text-vault-secondary text-sm md:text-base">Your browser will encrypt your payload before upload. Zero knowledge.</p>
+        <!-- Main Content -->
+        <main class="flex-grow w-full max-w-4xl mx-auto px-4 sm:px-6 py-8 flex flex-col gap-6 animate-in fade-in duration-300">
+            
+            <!-- Page Heading -->
+            <div class="flex flex-col gap-1">
+                <div class="flex items-center justify-between">
+                    <Link href="/" class="inline-flex items-center gap-1.5 text-xs font-semibold text-vault-primary hover:text-vault-primary-container transition-colors">
+                        <span class="material-symbols-outlined text-[1rem]">west</span> Back to Dashboard
+                    </Link>
+                    <span class="text-xs font-mono text-vault-outline bg-vault-surface-container px-2 py-0.5 rounded">Zero-Knowledge AES-256</span>
+                </div>
+                <h1 class="text-2xl sm:text-3xl font-bold text-vault-on-surface font-headline-md tracking-tight mt-2">Create Encrypted Secret</h1>
+                <p class="text-sm text-vault-on-surface-variant">Payloads are encrypted in your browser before uploading to our server.</p>
             </div>
 
-            <div class="w-full max-w-[60rem] bg-vault-surface-container-lowest border border-vault-outline-variant rounded-xl p-4 sm:p-6 md:p-8 shadow-sm">
+            <!-- Form Card -->
+            <div class="bg-vault-surface-container-lowest border border-vault-outline-variant rounded-2xl p-6 sm:p-8 shadow-sm">
                 
-                <div v-if="isGuestLimitReached" class="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 rounded-xl p-6 md:p-10 text-center flex flex-col items-center justify-center animate-[fadeIn_0.3s_ease-out]">
-                    <span class="material-symbols-outlined text-5xl text-red-500 mb-4">lock_person</span>
-                    <h3 class="text-2xl font-bold text-red-700 dark:text-red-400 mb-2 font-display">Guest Limit Reached</h3>
-                    <p class="text-red-600 dark:text-red-300 text-base max-w-md mx-auto mb-8">You have reached the maximum of 3 active secrets allowed for guest users. Create a free account to manage more secrets and access advanced features.</p>
-                    <div class="flex flex-col sm:flex-row items-center justify-center gap-3 w-full sm:w-auto">
-                        <Link :href="home()" class="w-full sm:w-auto bg-vault-surface-container-low border border-vault-outline-variant text-vault-on-surface hover:bg-vault-surface-container-high px-6 py-3 rounded text-center transition-colors font-label-md whitespace-nowrap">View History</Link>
-                        <Link href="/register" class="w-full sm:w-auto bg-vault-primary text-white hover:bg-vault-primary-container px-6 py-3 rounded text-center transition-colors font-label-md whitespace-nowrap">Create Free Account</Link>
+                <!-- Guest Limit Notice -->
+                <div v-if="isGuestLimitReached" class="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 rounded-2xl p-8 text-center flex flex-col items-center justify-center">
+                    <span class="material-symbols-outlined text-4xl text-red-500 mb-3">lock_person</span>
+                    <h3 class="text-xl font-bold text-red-700 dark:text-red-400 mb-2 font-headline-md">Guest Limit Reached</h3>
+                    <p class="text-sm text-red-600 dark:text-red-300 max-w-md mx-auto mb-6">You have reached the maximum of 3 active secrets allowed for guest users. Create a free account to manage more secrets.</p>
+                    <div class="flex flex-col sm:flex-row items-center gap-3">
+                        <Link href="/register" class="bg-vault-primary text-vault-on-primary font-label-md text-xs py-2.5 px-6 rounded-lg shadow-sm hover:bg-vault-primary-container transition-colors">Create Free Account</Link>
+                        <Link href="/login" class="bg-vault-surface-container border border-vault-outline-variant text-vault-on-surface font-label-md text-xs py-2.5 px-6 rounded-lg hover:bg-vault-outline-variant/30 transition-colors">Sign In</Link>
                     </div>
                 </div>
 
-                <form v-else-if="!isCreated" @submit.prevent="handleCreateSecret" class="flex flex-col gap-4 md:gap-5">
+                <!-- Create Form -->
+                <form v-else-if="!isCreated" @submit.prevent="handleCreateSecret" class="flex flex-col gap-6">
+                    
+                    <!-- Payload Text Area -->
                     <div class="flex flex-col gap-2">
                         <div class="flex justify-between items-center select-none">
-                            <label class="font-label-sm text-label-sm uppercase text-vault-secondary" for="secret-content">Payload</label>
+                            <label class="text-[0.6875rem] font-medium uppercase tracking-wider text-vault-on-surface-variant" for="secret-content">Secret Content</label>
 
                             <div class="flex items-center gap-3">
                                 <div v-show="activeTab === 'write'" class="hidden sm:flex items-center gap-2 text-vault-outline">
-                                    <button type="button" @click="insertMarkdown('**$**', 'bold')" class="hover:text-vault-primary transition-colors font-bold text-[0.6875rem] px-0.5" title="Bold">B</button>
-                                    <button type="button" @click="insertMarkdown('*$*', 'italic')" class="hover:text-vault-primary transition-colors italic text-[0.6875rem] px-0.5" title="Italic">I</button>
-                                    <button type="button" @click="insertMarkdown('# $', 'Heading')" class="hover:text-vault-primary transition-colors text-[0.6875rem] px-0.5" title="Heading">H</button>
-                                    <button type="button" @click="insertMarkdown('```\n$\n```', 'code')" class="hover:text-vault-primary transition-colors text-[0.6875rem] px-0.5 font-mono" title="Code Block">&lt;/&gt;</button>
-                                    <button type="button" @click="insertMarkdown('- $', 'list item')" class="hover:text-vault-primary transition-colors text-[0.6875rem] px-0.5" title="List Item">•</button>
+                                    <button type="button" @click="insertMarkdown('**$**', 'bold')" class="hover:text-vault-primary transition-colors font-bold text-[0.75rem] px-1 py-0.5 rounded hover:bg-vault-surface-container" title="Bold">B</button>
+                                    <button type="button" @click="insertMarkdown('*$*', 'italic')" class="hover:text-vault-primary transition-colors italic text-[0.75rem] px-1 py-0.5 rounded hover:bg-vault-surface-container" title="Italic">I</button>
+                                    <button type="button" @click="insertMarkdown('# $', 'Heading')" class="hover:text-vault-primary transition-colors text-[0.75rem] px-1 py-0.5 rounded hover:bg-vault-surface-container" title="Heading">H</button>
+                                    <button type="button" @click="insertMarkdown('```\n$\n```', 'code')" class="hover:text-vault-primary transition-colors text-[0.75rem] px-1 py-0.5 font-mono rounded hover:bg-vault-surface-container" title="Code Block">&lt;/&gt;</button>
                                 </div>
-                                <span v-show="activeTab === 'write'" class="text-vault-outline/20 hidden sm:inline">|</span>
-                                <div class="flex gap-2">
+                                <span v-show="activeTab === 'write'" class="text-vault-outline-variant hidden sm:inline">|</span>
+                                <div class="flex bg-vault-surface-container p-0.5 rounded-lg border border-vault-outline-variant">
                                     <button
                                         type="button"
                                         @click="activeTab = 'write'"
-                                        class="font-label-sm text-[0.625rem] uppercase tracking-wider transition-colors"
-                                        :class="activeTab === 'write' ? 'text-vault-primary font-bold' : 'text-vault-outline hover:text-vault-on-surface'"
+                                        class="px-2.5 py-1 rounded-md text-xs font-medium transition-all"
+                                        :class="activeTab === 'write' ? 'bg-vault-surface-container-lowest text-vault-on-surface shadow-xs' : 'text-vault-on-surface-variant hover:text-vault-on-surface'"
                                     >
                                         Write
                                     </button>
-                                    <span class="text-vault-outline/20">|</span>
                                     <button
                                         type="button"
                                         @click="activeTab = 'preview'"
-                                        class="font-label-sm text-[0.625rem] uppercase tracking-wider transition-colors"
-                                        :class="activeTab === 'preview' ? 'text-vault-primary font-bold' : 'text-vault-outline hover:text-vault-on-surface'"
+                                        class="px-2.5 py-1 rounded-md text-xs font-medium transition-all"
+                                        :class="activeTab === 'preview' ? 'bg-vault-surface-container-lowest text-vault-on-surface shadow-xs' : 'text-vault-on-surface-variant hover:text-vault-on-surface'"
                                     >
                                         Preview
                                     </button>
@@ -531,33 +563,33 @@ return '';
                                 v-model="payload"
                                 id="secret-content"
                                 @keydown="handleKeydown"
-                                class="w-full bg-vault-surface-container-low border border-vault-outline-variant rounded p-4 font-mono-custom text-sm text-vault-on-surface focus:outline-none focus:border-vault-primary focus:ring-1 focus:ring-vault-primary transition-all resize-none placeholder:text-vault-outline h-[10rem] md:h-[11.25rem]"
-                                placeholder="Enter code, credentials, or text to encrypt locally..."
+                                class="w-full bg-vault-surface-container-lowest border border-vault-outline-variant rounded-xl p-4 font-mono text-sm text-vault-on-surface focus:outline-none focus:ring-2 focus:ring-vault-primary focus:border-transparent transition-all resize-none placeholder:text-vault-outline h-48"
+                                placeholder="Enter passwords, API keys, private text, or Markdown to encrypt..."
                                 autocomplete="off"
                                 spellcheck="false"
                                 required
                             ></textarea>
-                            <div v-show="activeTab === 'write' && charCount > 0" class="absolute bottom-2 right-3 font-mono-custom text-[0.625rem] select-none pointer-events-none" :class="charWarning ? 'text-vault-error' : 'text-vault-outline/50'">{{ charCount.toLocaleString() }}</div>
+                            <div v-show="activeTab === 'write' && charCount > 0" class="absolute bottom-3 right-4 font-mono text-[0.6875rem] select-none pointer-events-none" :class="charWarning ? 'text-vault-error font-bold' : 'text-vault-on-surface-variant/60'">{{ charCount.toLocaleString() }} chars</div>
 
                             <div
                                 v-show="activeTab === 'preview'"
-                                class="w-full bg-vault-surface-container-low border border-vault-outline-variant rounded p-4 font-body-md text-body-md text-vault-on-surface overflow-y-auto select-text h-[10rem] md:h-[11.25rem] preview-container"
+                                class="w-full bg-vault-surface-container-lowest border border-vault-outline-variant rounded-xl p-4 font-body-md text-sm text-vault-on-surface overflow-y-auto select-text h-48 preview-container"
                                 v-html="compiledMarkdown"
                             ></div>
                         </div>
                     </div>
 
+                    <!-- Main Parameters Grid -->
                     <div class="grid grid-cols-1 md:grid-cols-12 gap-5 pt-4 border-t border-vault-outline-variant">
+                        <!-- Expiry Select -->
                         <div class="flex flex-col gap-2 md:col-span-4">
-                            <label class="font-label-sm text-label-sm uppercase text-vault-secondary select-none" for="expiry">Expiry</label>
+                            <label class="text-[0.6875rem] font-medium uppercase tracking-wider text-vault-on-surface-variant select-none" for="expiry">Expiry Duration</label>
                             <div class="relative">
                                 <select
                                     :value="expiry"
                                     @change="handleExpiryChange($event)"
                                     id="expiry"
-                                    @focus="activeFocus = 'expiry'"
-                                    @blur="activeFocus = null"
-                                    class="w-full appearance-none bg-vault-surface-container-lowest border border-vault-outline-variant rounded py-3 pl-4 pr-10 font-body-md text-body-md text-vault-on-surface focus:outline-none focus:border-vault-primary focus:ring-1 focus:ring-vault-primary transition-all"
+                                    class="w-full appearance-none bg-vault-surface-container-lowest border border-vault-outline-variant rounded-lg py-2.5 pl-4 pr-10 text-sm text-vault-on-surface focus:outline-none focus:ring-2 focus:ring-vault-primary focus:border-transparent transition-all cursor-pointer"
                                 >
                                     <option>No Expiry</option>
                                     <option>Never</option>
@@ -566,19 +598,20 @@ return '';
                                     <option>1 Day</option>
                                     <option>1 Hour</option>
                                 </select>
-                                <span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-vault-outline pointer-events-none text-[1.25rem] select-none">expand_more</span>
+                                <span class="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-vault-outline pointer-events-none text-[1.25rem]">expand_more</span>
                             </div>
                         </div>
+
+                        <!-- Burn on View Switch -->
                         <div class="flex flex-col gap-2 md:col-span-2">
-                            <label class="font-label-sm text-label-sm uppercase text-vault-secondary select-none">Burn on View</label>
-                            <div class="flex items-center h-[2.875rem]">
+                            <label class="text-[0.6875rem] font-medium uppercase tracking-wider text-vault-on-surface-variant select-none">Burn on Read</label>
+                            <div class="flex items-center h-[2.625rem]">
                                 <button
                                     type="button"
                                     @click="burnOnRead = !burnOnRead"
                                     :class="burnOnRead ? 'bg-vault-primary' : 'bg-vault-surface-container-high'"
-                                    class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-vault-primary focus:ring-offset-2"
+                                    class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-vault-primary"
                                     role="switch"
-                                    aria-label="Burn on View"
                                     :aria-checked="burnOnRead"
                                 >
                                     <span
@@ -586,20 +619,22 @@ return '';
                                         class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"
                                     ></span>
                                 </button>
-                                <span class="font-body-md text-body-md text-vault-on-surface-variant ml-3 select-none">
+                                <span class="text-xs font-medium text-vault-on-surface ml-2.5 select-none">
                                     {{ burnOnRead ? 'Yes' : 'No' }}
                                 </span>
                             </div>
                         </div>
+
+                        <!-- Decryption Key Input -->
                         <div class="flex flex-col gap-2 md:col-span-6">
                             <div class="flex items-center justify-between">
-                                <label class="font-label-sm text-label-sm uppercase text-vault-secondary select-none" for="password">Decryption Key</label>
+                                <label class="text-[0.6875rem] font-medium uppercase tracking-wider text-vault-on-surface-variant select-none" for="password">Decryption Key</label>
                                 <button
                                     type="button"
                                     @click="generateRandomPassword"
-                                    class="font-label-sm text-[0.6875rem] uppercase tracking-wider text-vault-primary hover:underline transition-colors font-semibold"
+                                    class="text-xs font-semibold text-vault-primary hover:text-vault-primary-container transition-colors flex items-center gap-1"
                                 >
-                                    Generate Key
+                                    <span class="material-symbols-outlined text-[0.875rem]">casino</span> Generate
                                 </button>
                             </div>
                             <div class="relative">
@@ -608,8 +643,8 @@ return '';
                                     :type="showPassword ? 'text' : 'password'"
                                     id="password"
                                     autocomplete="new-password"
-                                    class="w-full bg-vault-surface-container-lowest border border-vault-outline-variant rounded py-3 pl-4 pr-12 font-body-md text-body-md text-vault-on-surface focus:outline-none focus:border-vault-primary focus:ring-1 focus:ring-vault-primary transition-all placeholder:text-vault-outline"
-                                    placeholder="Enter decryption key"
+                                    class="w-full bg-vault-surface-container-lowest border border-vault-outline-variant rounded-lg py-2.5 pl-4 pr-12 text-sm font-mono text-vault-on-surface focus:outline-none focus:ring-2 focus:ring-vault-primary focus:border-transparent transition-all placeholder:text-vault-outline"
+                                    placeholder="Enter or generate a key"
                                     required
                                 />
                                 <button
@@ -617,25 +652,29 @@ return '';
                                     @click="showPassword = !showPassword"
                                     class="absolute right-3 top-1/2 -translate-y-1/2 text-vault-outline hover:text-vault-on-surface transition-colors flex items-center"
                                 >
-                                    <span class="material-symbols-outlined text-[1.25rem] select-none">
+                                    <span class="material-symbols-outlined text-[1.25rem]">
                                         {{ showPassword ? 'visibility_off' : 'visibility' }}
                                     </span>
                                 </button>
                             </div>
                         </div>
+
+                        <!-- Identifier -->
                         <div class="flex flex-col gap-2 md:col-span-6">
-                            <label class="font-label-sm text-label-sm uppercase text-vault-secondary select-none" for="identifier">Secret Identifier (Optional)</label>
+                            <label class="text-[0.6875rem] font-medium uppercase tracking-wider text-vault-on-surface-variant select-none" for="identifier">Secret Identifier (Optional)</label>
                             <input
                                 v-model="identifier"
                                 type="text"
                                 id="identifier"
-                                class="w-full bg-vault-surface-container-lowest border border-vault-outline-variant rounded py-3 px-4 font-body-md text-body-md text-vault-on-surface focus:outline-none focus:border-vault-primary focus:ring-1 focus:ring-vault-primary transition-all placeholder:text-vault-outline"
-                                placeholder="e.g., Instagram Password"
+                                class="w-full bg-vault-surface-container-lowest border border-vault-outline-variant rounded-lg py-2.5 px-4 text-sm text-vault-on-surface focus:outline-none focus:ring-2 focus:ring-vault-primary focus:border-transparent transition-all placeholder:text-vault-outline"
+                                placeholder="e.g. Production Database Password"
                             />
                         </div>
+
+                        <!-- Custom Slug -->
                         <div class="flex flex-col gap-2 md:col-span-6 relative">
                             <div class="flex items-center justify-between">
-                                <label class="font-label-sm text-label-sm uppercase text-vault-secondary select-none" for="custom-address">Custom Address (Optional)</label>
+                                <label class="text-[0.6875rem] font-medium uppercase tracking-wider text-vault-on-surface-variant select-none" for="custom-address">Custom URL Slug (Optional)</label>
                                 <span v-if="!$page.props.auth?.user" class="text-[0.625rem] text-vault-primary font-bold uppercase tracking-wider">Login Required</span>
                             </div>
                             <input
@@ -646,20 +685,20 @@ return '';
                                 minlength="5"
                                 pattern="[a-zA-Z0-9\-]+"
                                 :class="{'opacity-60 cursor-not-allowed': !$page.props.auth?.user}"
-                                class="w-full bg-vault-surface-container-lowest border border-vault-outline-variant rounded py-3 px-4 font-body-md text-body-md text-vault-on-surface focus:outline-none focus:border-vault-primary focus:ring-1 focus:ring-vault-primary transition-all placeholder:text-vault-outline disabled:bg-vault-surface-container-low"
-                                placeholder="Add custom address"
+                                class="w-full bg-vault-surface-container-lowest border border-vault-outline-variant rounded-lg py-2.5 px-4 text-sm text-vault-on-surface focus:outline-none focus:ring-2 focus:ring-vault-primary focus:border-transparent transition-all placeholder:text-vault-outline disabled:bg-vault-surface-container-low"
+                                placeholder="e.g. my-custom-secret"
                             />
                         </div>
                     </div>
- 
-                    <!-- File Attachment Section -->
-                    <div class="pt-3 border-t border-vault-outline-variant flex flex-col gap-2">
+
+                    <!-- File Attachments -->
+                    <div class="pt-4 border-t border-vault-outline-variant flex flex-col gap-2">
                         <div class="flex items-center justify-between">
-                            <label class="font-label-sm text-label-sm uppercase text-vault-secondary select-none">Attachments (Optional)</label>
+                            <label class="text-[0.6875rem] font-medium uppercase tracking-wider text-vault-on-surface-variant select-none">File Attachments (Optional)</label>
                             <span v-if="!$page.props.auth?.user" class="text-[0.625rem] text-vault-primary font-bold uppercase tracking-wider">Login Required</span>
                         </div>
                         <div 
-                            class="border border-dashed border-vault-outline-variant rounded-lg p-3 flex flex-col items-center justify-center bg-vault-surface-container-lowest hover:bg-vault-surface-container-low/30 hover:border-vault-primary/50 transition-all cursor-pointer select-none"
+                            class="border border-dashed border-vault-outline-variant rounded-xl p-5 flex flex-col items-center justify-center bg-vault-surface-container-lowest hover:bg-vault-surface-container/30 hover:border-vault-primary/60 transition-all cursor-pointer select-none"
                             @click="triggerFileInput"
                             @dragover.prevent="!$page.props.auth?.user ? null : dragOver = true"
                             @dragleave.prevent="dragOver = false"
@@ -673,30 +712,30 @@ return '';
                                 @change="handleFileSelect" 
                                 multiple
                             />
-                            <div class="flex items-center gap-2 text-vault-outline hover:text-vault-primary transition-colors">
-                                <span class="material-symbols-outlined text-[1.25rem]">attach_file</span>
-                                <span v-if="!$page.props.auth?.user" class="font-body-md text-body-md text-vault-secondary">Sign in to add file attachments</span>
-                                <span v-else class="font-body-md text-body-md text-vault-secondary">Drag & drop files here, or <span class="text-vault-primary font-medium">browse</span></span>
+                            <div class="flex items-center gap-2 text-vault-on-surface-variant">
+                                <span class="material-symbols-outlined text-vault-primary text-[1.5rem]">upload_file</span>
+                                <span v-if="!$page.props.auth?.user" class="text-sm">Sign in to attach encrypted files</span>
+                                <span v-else class="text-sm">Drag & drop files here, or <span class="text-vault-primary font-medium underline">browse</span></span>
                             </div>
-                            <p class="font-label-sm text-[0.625rem] text-vault-secondary/70 mt-1">Maximum size: 100MB per file</p>
+                            <p class="text-xs text-vault-on-surface-variant/70 mt-1">Files are encrypted client-side using AES-256 (up to 100MB per file)</p>
                         </div>
 
-                        <!-- Selected Files List -->
+                        <!-- Selected Files Chips -->
                         <div v-if="attachedFiles.length > 0" class="flex flex-col gap-2 mt-2">
                             <div 
                                 v-for="(file, index) in attachedFiles" 
                                 :key="index"
-                                class="flex items-center justify-between bg-vault-surface-container-low border border-vault-outline-variant/60 rounded px-3 py-2 text-vault-on-surface font-body-md text-body-md animate-[fadeIn_0.2s_ease-out]"
+                                class="flex items-center justify-between bg-vault-surface-container-low border border-vault-outline-variant/60 rounded-lg px-3.5 py-2 text-vault-on-surface text-sm"
                             >
-                                <div class="flex items-center gap-2 overflow-hidden mr-4">
+                                <div class="flex items-center gap-2.5 overflow-hidden mr-4">
                                     <span class="material-symbols-outlined text-vault-outline text-[1.125rem]">description</span>
-                                    <span class="truncate">{{ file.name }}</span>
-                                    <span class="text-vault-secondary text-[0.6875rem] font-mono-custom">({{ formatBytes(file.size) }})</span>
+                                    <span class="truncate font-medium">{{ file.name }}</span>
+                                    <span class="text-vault-on-surface-variant text-xs font-mono">({{ formatBytes(file.size) }})</span>
                                 </div>
                                 <button 
                                     type="button" 
                                     @click="removeFile(index)" 
-                                    class="text-vault-outline hover:text-vault-error transition-colors flex items-center justify-center p-0.5 rounded-full hover:bg-vault-outline-variant/30"
+                                    class="text-vault-outline hover:text-red-600 transition-colors p-1 rounded-full"
                                     title="Remove file"
                                 >
                                     <span class="material-symbols-outlined text-[1.125rem]">close</span>
@@ -705,116 +744,119 @@ return '';
                         </div>
                     </div>
 
-                    <!-- Advanced Options Section -->
-                    <div v-show="showAdvanced" class="pt-4 mt-2 border-t border-vault-outline-variant grid grid-cols-1 md:grid-cols-2 gap-5 animate-[fadeIn_0.2s_ease-out]">
+                    <!-- Advanced Section Toggle -->
+                    <div v-show="showAdvanced" class="pt-4 border-t border-vault-outline-variant grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div class="flex flex-col gap-2 relative">
-                            <div class="flex items-center justify-between">
-                                <label class="font-label-sm text-label-sm uppercase text-vault-secondary select-none" for="recipient-email">Recipient Email(s) (Optional)</label>
-                                <span v-if="!$page.props.auth?.user" class="text-[0.625rem] text-vault-primary font-bold uppercase tracking-wider">Login Required</span>
-                            </div>
-                            <div class="relative w-full">
-                                <input
-                                    v-model="recipientEmail"
-                                    type="text"
-                                    id="recipient-email"
-                                    :disabled="!$page.props.auth?.user"
-                                    class="w-full border border-vault-outline-variant rounded py-3 px-4 font-body-md text-body-md text-vault-on-surface focus:outline-none focus:border-vault-primary focus:ring-1 transition-all placeholder:text-vault-outline bg-vault-surface-container-lowest focus:ring-vault-primary disabled:opacity-50"
-                                    :placeholder="!$page.props.auth?.user ? 'Sign in to notify recipients via email' : 'e.g. user1@example.com, user2@example.com'"
-                                />
-                                <div
-                                    v-if="!$page.props.auth?.user"
-                                    @click="handleRecipientEmailClick"
-                                    class="absolute inset-0 cursor-pointer z-10"
-                                    title="Sign in to use this feature"
-                                ></div>
-                            </div>
+                            <label class="text-[0.6875rem] font-medium uppercase tracking-wider text-vault-on-surface-variant select-none" for="recipient-email">Recipient Email(s)</label>
+                            <input
+                                v-model="recipientEmail"
+                                type="text"
+                                id="recipient-email"
+                                :disabled="!$page.props.auth?.user"
+                                class="w-full border border-vault-outline-variant rounded-lg py-2.5 px-4 text-sm text-vault-on-surface focus:outline-none focus:ring-2 focus:ring-vault-primary focus:border-transparent transition-all placeholder:text-vault-outline bg-vault-surface-container-lowest disabled:opacity-50"
+                                :placeholder="!$page.props.auth?.user ? 'Sign in to send email notifications' : 'e.g. recipient@example.com'"
+                            />
                         </div>
                         <div class="flex flex-col gap-2">
-                            <div class="flex items-center justify-between">
-                                <label class="font-label-sm text-label-sm uppercase text-vault-secondary select-none" for="encryption-hint">Encryption Hint (Optional)</label>
-                            </div>
+                            <label class="text-[0.6875rem] font-medium uppercase tracking-wider text-vault-on-surface-variant select-none" for="encryption-hint">Encryption Hint</label>
                             <input
                                 v-model="encryptionHint"
                                 type="text"
                                 id="encryption-hint"
-                                class="w-full border border-vault-outline-variant rounded py-3 px-4 font-body-md text-body-md text-vault-on-surface focus:outline-none focus:border-vault-primary focus:ring-1 transition-all placeholder:text-vault-outline bg-vault-surface-container-lowest focus:ring-vault-primary"
-                                placeholder="Add a hint to help decrypt"
+                                class="w-full border border-vault-outline-variant rounded-lg py-2.5 px-4 text-sm text-vault-on-surface focus:outline-none focus:ring-2 focus:ring-vault-primary focus:border-transparent transition-all placeholder:text-vault-outline bg-vault-surface-container-lowest"
+                                placeholder="Hint to help recipient recall passphrase"
                             />
                         </div>
                     </div>
 
-                    <div class="pt-4 mt-2 border-t border-vault-outline-variant flex flex-col md:flex-row justify-between items-center gap-4">
+                    <!-- Footer Actions -->
+                    <div class="pt-4 border-t border-vault-outline-variant flex flex-col sm:flex-row justify-between items-center gap-4">
                         <button
                             type="button"
                             @click="showAdvanced = !showAdvanced"
-                            class="w-full md:w-auto bg-vault-surface-container-lowest border border-vault-outline-variant text-vault-on-surface font-label-md text-label-md py-3 px-6 rounded hover:bg-vault-surface-container-low transition-colors duration-200 scale-95 hover:scale-100 ease-in-out inline-flex items-center justify-center gap-2"
+                            class="w-full sm:w-auto text-xs font-semibold text-vault-on-surface-variant hover:text-vault-on-surface transition-colors inline-flex items-center gap-1.5"
                         >
-                            <span class="material-symbols-outlined text-[1.125rem] transition-transform duration-200" :class="{ 'rotate-180': showAdvanced }">expand_more</span>
-                            Advanced
+                            <span class="material-symbols-outlined text-[1.125rem]" :class="{ 'rotate-180': showAdvanced }">expand_more</span>
+                            {{ showAdvanced ? 'Hide Advanced Options' : 'Show Advanced Options' }}
                         </button>
+
+                        <div v-if="isSubmitting" class="w-full sm:w-80 bg-vault-surface-container-low border border-vault-outline-variant rounded-lg p-3 flex flex-col gap-1.5 shadow-sm animate-in fade-in duration-200">
+                            <div class="flex justify-between items-center text-xs text-vault-on-surface">
+                                <span class="font-medium flex items-center gap-1.5 truncate max-w-[14rem]">
+                                    <span class="material-symbols-outlined text-[1rem] animate-spin text-vault-primary shrink-0">sync</span>
+                                    <span class="truncate">{{ uploadStage }}</span>
+                                </span>
+                                <span class="font-mono font-bold text-vault-primary shrink-0">{{ uploadProgress }}%</span>
+                            </div>
+                            <div class="w-full bg-vault-surface-container-high rounded-full h-2 overflow-hidden">
+                                <div class="bg-vault-primary h-2 rounded-full transition-all duration-200 ease-out" :style="{ width: uploadProgress + '%' }"></div>
+                            </div>
+                        </div>
                         <button
+                            v-else
                             type="submit"
-                            :disabled="isSubmitting || (!payload.trim() && attachedFiles.length === 0)"
-                            class="w-full md:w-auto bg-vault-primary text-vault-on-primary font-label-md text-label-md py-3 px-8 rounded hover:bg-vault-primary-container transition-colors flex items-center justify-center gap-2 shadow-[inset_0_-1px_0_rgba(0,0,0,0.2)] active:shadow-none active:translate-y-[1px] disabled:opacity-70 disabled:cursor-not-allowed"
-                            aria-label="Encrypt and create secret link"
+                            :disabled="!payload.trim() && attachedFiles.length === 0"
+                            class="w-full sm:w-auto bg-vault-primary text-vault-on-primary font-label-md text-sm py-3 px-8 rounded-lg shadow-sm hover:bg-vault-primary-container transition-all active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-60"
                         >
-                            <span v-if="!isSubmitting" class="material-symbols-outlined text-[1.125rem]" style="font-variation-settings: 'FILL' 1;">lock</span>
-                            <span v-else class="material-symbols-outlined text-[1.125rem] animate-spin">sync</span>
-                            {{ isSubmitting ? 'Encrypting...' : 'Encrypt & Store' }}
+                            <span class="material-symbols-outlined text-[1.125rem]">lock</span>
+                            Encrypt & Create Secret Link
                         </button>
                     </div>
                 </form>
 
-                <div v-else class="flex flex-col gap-6 animate-[fadeIn_0.3s_ease-out]">
+                <!-- Secret Created Result Card -->
+                <div v-else class="flex flex-col gap-6 animate-in fade-in duration-300">
                     <div class="flex items-center gap-3 text-vault-primary">
-                        <span class="material-symbols-outlined text-[1.75rem]">verified</span>
-                        <h2 class="font-headline-md text-headline-md font-bold">Secret Link Generated</h2>
+                        <span class="material-symbols-outlined text-3xl">verified</span>
+                        <div>
+                            <h2 class="text-xl font-bold text-vault-on-surface font-headline-md tracking-tight">Secret Link Generated Successfully!</h2>
+                            <p class="text-xs text-vault-on-surface-variant mt-0.5">Your secret was encrypted locally before being transmitted to the server.</p>
+                        </div>
                     </div>
 
-                    <p class="font-body-md text-body-md text-vault-on-surface-variant">
-                        This payload is encrypted and stored securely in your vault. Share this link, or keep it for yourself. It will be destroyed based on the expiry config (<strong>{{ expiry }}</strong>).
-                    </p>
-
-                    <div class="flex flex-col md:flex-row gap-6 items-center">
-                        <div class="flex-shrink-0 bg-vault-surface-container-low p-4 rounded-xl border border-vault-outline-variant flex items-center justify-center bg-white">
-                            <img :src="`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(createdLink)}&bgcolor=ffffff&color=000000`" alt="Secret QR Code" class="rounded-md w-[7.5rem] h-[7.5rem] md:w-[9.375rem] md:h-[9.375rem]" />
+                    <div class="flex flex-col md:flex-row gap-6 items-center bg-vault-surface-container/30 p-6 rounded-xl border border-vault-outline-variant">
+                        <div class="flex-shrink-0 bg-white p-3 rounded-xl border border-vault-outline-variant shadow-sm flex items-center justify-center">
+                            <img :src="`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(createdLink)}&bgcolor=ffffff&color=000000`" alt="Secret QR Code" class="w-32 h-32" />
                         </div>
+
                         <div class="flex flex-col gap-4 w-full">
-                            <div class="flex flex-col gap-2">
-                                <label class="font-label-sm text-label-sm uppercase text-vault-secondary select-none">Secret URL</label>
+                            <!-- Share Link Box -->
+                            <div class="flex flex-col gap-1.5">
+                                <label class="text-[0.6875rem] font-medium uppercase tracking-wider text-vault-on-surface-variant select-none">Encrypted Secret URL</label>
                                 <div class="flex flex-col sm:flex-row gap-2">
                                     <input
                                         readonly
                                         :value="createdLink"
-                                        class="w-full bg-vault-surface-container-low border border-vault-outline-variant rounded py-3 px-4 font-mono-custom text-sm text-vault-on-surface focus:outline-none"
+                                        class="w-full bg-vault-surface-container-lowest border border-vault-outline-variant rounded-lg py-2.5 px-4 font-mono text-xs text-vault-on-surface focus:outline-none"
                                     />
                                     <button
                                         @click="handleCopy"
                                         type="button"
-                                        class="bg-vault-primary text-vault-on-primary font-label-md text-label-md px-6 py-3 rounded hover:bg-vault-primary-container transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
+                                        class="bg-vault-primary text-vault-on-primary font-label-md text-xs px-5 py-2.5 rounded-lg hover:bg-vault-primary-container transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap shadow-xs"
                                     >
-                                        <span class="material-symbols-outlined text-[1.125rem]">{{ copied ? 'done' : 'content_copy' }}</span>
+                                        <span class="material-symbols-outlined text-[1rem]">{{ copied ? 'done' : 'content_copy' }}</span>
                                         {{ copied ? 'Copied' : 'Copy Link' }}
                                     </button>
                                 </div>
                             </div>
                             
-                            <div class="flex flex-col gap-2 pt-2 border-t border-vault-outline-variant/30">
-                                <label class="font-label-sm text-label-sm uppercase text-vault-secondary select-none">Decryption Key</label>
+                            <!-- Decryption Key Box -->
+                            <div class="flex flex-col gap-1.5 pt-3 border-t border-vault-outline-variant/60">
+                                <label class="text-[0.6875rem] font-medium uppercase tracking-wider text-vault-on-surface-variant select-none">Decryption Passphrase / Key</label>
                                 <div class="flex flex-col sm:flex-row gap-2">
                                     <div class="relative w-full">
                                         <input
                                             readonly
                                             :type="showCreatedKey ? 'text' : 'password'"
                                             :value="password"
-                                            class="w-full bg-vault-surface-container-low border border-vault-outline-variant rounded py-3 pl-4 pr-12 font-mono-custom text-sm text-vault-on-surface focus:outline-none"
+                                            class="w-full bg-vault-surface-container-lowest border border-vault-outline-variant rounded-lg py-2.5 pl-4 pr-10 font-mono text-xs text-vault-on-surface focus:outline-none"
                                         />
                                         <button
                                             type="button"
                                             @click="showCreatedKey = !showCreatedKey"
-                                            class="absolute right-3 top-1/2 -translate-y-1/2 text-vault-outline hover:text-vault-on-surface transition-colors flex items-center"
+                                            class="absolute right-3 top-1/2 -translate-y-1/2 text-vault-outline hover:text-vault-on-surface transition-colors"
                                         >
-                                            <span class="material-symbols-outlined text-[1.25rem] select-none">
+                                            <span class="material-symbols-outlined text-[1.125rem]">
                                                 {{ showCreatedKey ? 'visibility_off' : 'visibility' }}
                                             </span>
                                         </button>
@@ -822,9 +864,9 @@ return '';
                                     <button
                                         @click="handleCopyKey"
                                         type="button"
-                                        class="bg-vault-surface-container-low hover:bg-vault-surface-container-high border border-vault-outline-variant text-vault-on-surface font-label-md text-label-md px-6 py-3 rounded transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
+                                        class="bg-vault-surface-container border border-vault-outline-variant text-vault-on-surface font-label-md text-xs px-5 py-2.5 rounded-lg hover:bg-vault-outline-variant/30 transition-colors flex items-center justify-center gap-1.5 whitespace-nowrap"
                                     >
-                                        <span class="material-symbols-outlined text-[1.125rem]">{{ copiedKey ? 'done' : 'content_copy' }}</span>
+                                        <span class="material-symbols-outlined text-[1rem]">{{ copiedKey ? 'done' : 'content_copy' }}</span>
                                         {{ copiedKey ? 'Copied' : 'Copy Key' }}
                                     </button>
                                 </div>
@@ -832,36 +874,37 @@ return '';
                         </div>
                     </div>
 
-                    <div class="bg-vault-surface-container-low p-4 rounded border border-vault-outline-variant/50 text-xs text-vault-on-surface-variant flex flex-col gap-2">
-                        <p class="font-medium text-vault-secondary">🔒 Zero-Knowledge Security Notice</p>
-                        <p>
-                            The decryption key is never stored on our servers. You must copy the URL and Key to share with your recipient.
-                        </p>
+                    <div class="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/50 p-4 rounded-xl text-xs text-blue-800 dark:text-blue-300 flex items-start gap-2.5">
+                        <span class="material-symbols-outlined text-[1.25rem] text-blue-600 mt-0.5">info</span>
+                        <div>
+                            <p class="font-bold">Zero-Knowledge Storage</p>
+                            <p class="mt-0.5">The decryption key is never stored on our servers. Be sure to share both the link and key with your recipient.</p>
+                        </div>
                     </div>
 
-                    <div class="pt-6 border-t border-vault-outline-variant/50 flex flex-col md:flex-row justify-end gap-3 w-full">
+                    <div class="pt-4 border-t border-vault-outline-variant flex flex-col sm:flex-row justify-end gap-3 w-full">
                         <button
                             @click="handleDeleteSecret"
                             :disabled="isDeleting"
                             type="button"
-                            class="w-full md:w-auto bg-red-50 hover:bg-red-100 dark:bg-red-950/20 dark:hover:bg-red-950/30 border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 font-label-md text-label-md py-3 px-8 rounded transition-colors text-center flex items-center justify-center gap-2"
+                            class="bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 font-label-md text-xs py-2.5 px-5 rounded-lg transition-colors flex items-center justify-center gap-1.5"
                         >
-                            <span v-if="!isDeleting" class="material-symbols-outlined text-[1.125rem]">delete</span>
-                            <span v-else class="material-symbols-outlined text-[1.125rem] animate-spin">sync</span>
+                            <span v-if="!isDeleting" class="material-symbols-outlined text-[1rem]">delete</span>
+                            <span v-else class="material-symbols-outlined text-[1rem] animate-spin">progress_activity</span>
                             Delete Secret
                         </button>
                         <Link
-                            :href="home()"
-                            class="w-full md:w-auto bg-vault-surface-container-low border border-vault-outline-variant text-vault-on-surface font-label-md text-label-md py-3 px-8 rounded hover:bg-vault-surface-container-high transition-colors text-center flex items-center justify-center"
+                            href="/"
+                            class="bg-vault-surface-container border border-vault-outline-variant text-vault-on-surface font-label-md text-xs py-2.5 px-5 rounded-lg hover:bg-vault-outline-variant/30 transition-colors text-center flex items-center justify-center"
                         >
-                            Go Home
+                            Back to Dashboard
                         </Link>
                         <button
                             @click="handleCreateAnother"
                             type="button"
-                            class="w-full md:w-auto bg-vault-primary text-vault-on-primary font-label-md text-label-md py-3 px-8 rounded hover:bg-vault-primary-container transition-colors flex items-center justify-center"
+                            class="bg-vault-primary text-vault-on-primary font-label-md text-xs py-2.5 px-5 rounded-lg hover:bg-vault-primary-container transition-colors flex items-center justify-center gap-1.5"
                         >
-                            Create Another
+                            <span class="material-symbols-outlined text-[1rem]">add</span> Create Another
                         </button>
                     </div>
                 </div>

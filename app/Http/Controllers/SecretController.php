@@ -180,7 +180,8 @@ class SecretController extends Controller
                             [
                                 'path' => $file['path'],
                                 'burn' => $secret->burn_on_read ? '1' : '0'
-                            ]
+                            ],
+                            absolute: false
                         ),
                         'encrypted_metadata' => $file['encrypted_metadata'],
                         'salt' => $file['salt'],
@@ -195,7 +196,8 @@ class SecretController extends Controller
                             [
                                 'path' => $file,
                                 'burn' => $secret->burn_on_read ? '1' : '0'
-                            ]
+                            ],
+                            absolute: false
                         ),
                         'encrypted_metadata' => '',
                         'salt' => '',
@@ -235,7 +237,7 @@ class SecretController extends Controller
 
     public function downloadFile(Request $request)
     {
-        if (!$request->hasHeader('X-Vault-Decrypted')) {
+        if (!$request->hasHeader('X-Vault-Decrypted') && !$request->hasHeader('x-vault-decrypted')) {
             abort(403, 'Direct access to file downloads is not allowed. Files must be decrypted and requested through the application.');
         }
 

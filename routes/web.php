@@ -23,6 +23,10 @@ Route::get('/', function () {
                     'created_at' => $secret->created_at->toIso8601String(),
                 ];
             });
+
+        return inertia('Dashboard', [
+            'secrets' => $secrets,
+        ]);
     }
     return inertia('Welcome', [
         'secrets' => $secrets
@@ -66,28 +70,16 @@ Route::post('/contact', function (Request $request) {
     return response()->json(['message' => 'Message sent successfully.']);
 });
 
-Route::middleware(['auth', 'verified'])->group(function () {
-    Route::get('profile', function () {
-        $secrets = \App\Models\Secret::where('user_id', auth()->id())
-            ->where('expiry_date', '>', now())
-            ->orderBy('created_at', 'desc')
-            ->get()
-            ->map(function ($secret) {
-                return [
-                    'secret_id' => $secret->secret_id,
-                    'identifier' => $secret->identifier,
-                    'url' => url('/secret/' . $secret->secret_id),
-                    'expiry_date' => $secret->expiry_date->toIso8601String(),
-                    'burn_on_read' => $secret->burn_on_read,
-                    'recipient_email' => $secret->recipient_email,
-                    'created_at' => $secret->created_at->toIso8601String(),
-                ];
-            });
+use App\Http\Controllers\VaultController;
 
-        return inertia('Profile', [
-            'secrets' => $secrets,
-        ]);
-    })->name('profile');
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::get('/api/vault/files', [VaultController::class, 'index'])->name('vault.index');
+    Route::post('/api/vault/files', [VaultController::class, 'store'])->name('vault.store');
+    Route::delete('/api/vault/files/{id}', [VaultController::class, 'destroy'])->name('vault.destroy');
+    Route::get('/api/vault/files/download', [VaultController::class, 'downloadFile'])
+        ->name('vault.download')
+        ->middleware('signed:relative');
+
 });
 
 use App\Http\Controllers\SecretController;
@@ -117,7 +109,7 @@ Route::delete('/api/secrets/{secretId}', [SecretController::class, 'destroy'])->
 Route::post('/api/secrets/{secretId}/burn', [SecretController::class, 'burn'])->name('secrets.burn');
 Route::get('/api/secrets/file/download', [SecretController::class, 'downloadFile'])
     ->name('secrets.file.download')
-    ->middleware('signed');
+    ->middleware('signed:relative');
 
 
 require __DIR__.'/settings.php';

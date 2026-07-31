@@ -33,8 +33,10 @@ class SecurityHeaders
                "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com; " .
                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " .
                "font-src 'self' data: https://fonts.gstatic.com; " .
-               "img-src 'self' data: https://www.googletagmanager.com; " .
+               "img-src 'self' data: blob: https://www.googletagmanager.com; " .
                "connect-src 'self' https://www.google-analytics.com https://analytics.google.com https://stats.g.doubleclick.net; " .
+               "media-src 'self' blob:; " .
+               "frame-src 'self' blob:; " .
                "object-src 'none'; " .
                "frame-ancestors 'none'; " .
                "base-uri 'self'; " .

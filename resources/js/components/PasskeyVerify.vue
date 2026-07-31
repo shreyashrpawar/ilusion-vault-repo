@@ -64,7 +64,7 @@ const { verify, isLoading, error, isSupported } = usePasskeyVerify({
                 <Separator class="w-full" />
             </div>
             <div class="relative flex justify-center text-xs uppercase">
-                <span class="bg-background px-2 text-muted-foreground">
+                <span class="bg-vault-surface-container-lowest px-2 text-vault-secondary">
                     {{ props.separator ?? 'Or continue with email' }}
                 </span>
             </div>

@@ -91,6 +91,113 @@ export async function decryptText(jsonStr: string, password: string): Promise<st
     }
 }
 
+// ── Worker helpers ─────────────────────────────────────────────────
+
+function createWorker(): Worker {
+    return new Worker(new URL('./crypto.worker.ts', import.meta.url), { type: 'module' });
+}
+
+/**
+ * Create a persistent worker that pre-derives the key once.
+ * Use the returned object to encrypt/decrypt multiple files
+ * without repeating the expensive PBKDF2 derivation.
+ *
+ * Usage:
+ *   const batch = await createBatchWorker(passphrase);
+ *   for (const file of files) {
+ *     const result = await batch.encryptFile(file);
+ *   }
+ *   batch.terminate();
+ */
+export async function createBatchWorker(password: string): Promise<{
+    encryptFile: (file: File) => Promise<{ encryptedBlob: Blob; metadata: { encrypted_metadata: string; salt: string; iv: string } }>;
+    decryptFile: (encryptedBuffer: ArrayBuffer, metaJsonStr: string, metaSaltStr: string, metaIvStr: string) => Promise<{ decryptedFile: File; name: string; type: string }>;
+    terminate: () => void;
+}> {
+    const worker = createWorker();
+
+    // Wait for INIT to complete (key derivation happens here, once)
+    await new Promise<void>((resolve, reject) => {
+        const handler = (e: MessageEvent) => {
+            worker.removeEventListener('message', handler);
+            if (e.data.type === 'INIT_SUCCESS') {
+                resolve();
+            } else {
+                reject(new Error(e.data.payload?.message || 'INIT failed'));
+            }
+        };
+        worker.addEventListener('message', handler);
+        worker.onerror = (e) => reject(e);
+        worker.postMessage({ type: 'INIT', payload: { password } });
+    });
+
+    return {
+        encryptFile(file: File) {
+            return new Promise((resolve, reject) => {
+                const handler = (e: MessageEvent) => {
+                    worker.removeEventListener('message', handler);
+                    const { type, payload } = e.data;
+                    if (type === 'ENCRYPT_FILE_SUCCESS') {
+                        const encryptedBlob = new Blob([payload.encryptedBuffer], { type: 'application/octet-stream' });
+                        resolve({ encryptedBlob, metadata: payload.metadata });
+                    } else {
+                        reject(new Error(payload?.message || 'Encrypt failed'));
+                    }
+                };
+                worker.addEventListener('message', handler);
+
+                file.arrayBuffer().then((fileBuffer) => {
+                    worker.postMessage({
+                        type: 'ENCRYPT_FILE',
+                        payload: {
+                            fileBuffer,
+                            fileName: file.name,
+                            fileType: file.type,
+                            fileSize: file.size
+                        }
+                    }, [fileBuffer]);
+                }).catch(reject);
+            });
+        },
+
+        decryptFile(encryptedBuffer: ArrayBuffer, metaJsonStr: string, metaSaltStr: string, metaIvStr: string) {
+            return new Promise((resolve, reject) => {
+                const handler = (e: MessageEvent) => {
+                    worker.removeEventListener('message', handler);
+                    const { type, payload } = e.data;
+                    if (type === 'DECRYPT_FILE_SUCCESS') {
+                        const decryptedBlob = new Blob([payload.decryptedBuffer], { type: payload.type });
+                        const decryptedFile = new File([decryptedBlob], payload.name, { type: payload.type });
+                        resolve({ decryptedFile, name: payload.name, type: payload.type });
+                    } else {
+                        reject(new Error(payload?.message || 'Decrypt failed'));
+                    }
+                };
+                worker.addEventListener('message', handler);
+
+                const bufferCopy = encryptedBuffer.slice(0);
+                worker.postMessage({
+                    type: 'DECRYPT_FILE',
+                    payload: {
+                        encryptedBuffer: bufferCopy,
+                        metaJsonStr,
+                        metaSaltStr,
+                        metaIvStr
+                    }
+                }, [bufferCopy]);
+            });
+        },
+
+        terminate() {
+            worker.terminate();
+        }
+    };
+}
+
+// ── One-off file operations (for non-batch use) ────────────────────
+// These spawn a fresh worker per operation. Use createBatchWorker()
+// instead when processing multiple files with the same password.
+
 export async function encryptFile(
     file: File,
     password: string
@@ -102,51 +209,40 @@ export async function encryptFile(
         iv: string;
     };
 }> {
-    // 1. Encrypt file content
-    const fileSalt = window.crypto.getRandomValues(new Uint8Array(16));
-    const fileIv = window.crypto.getRandomValues(new Uint8Array(12));
-    const fileKey = await deriveKey(password, fileSalt);
+    return new Promise((resolve, reject) => {
+        const worker = createWorker();
 
-    const fileBuffer = await file.arrayBuffer();
-    const encryptedContent = await window.crypto.subtle.encrypt(
-        { name: 'AES-GCM', iv: fileIv },
-        fileKey,
-        fileBuffer
-    );
+        worker.onmessage = (e) => {
+            const { type, payload } = e.data;
+            if (type === 'ENCRYPT_FILE_SUCCESS') {
+                const { encryptedBuffer, metadata } = payload;
+                const encryptedBlob = new Blob([encryptedBuffer], { type: 'application/octet-stream' });
+                resolve({ encryptedBlob, metadata });
+                worker.terminate();
+            } else if (type === 'ERROR') {
+                reject(new Error(payload.message));
+                worker.terminate();
+            }
+        };
 
-    // Create the self-contained Blob: Salt (16B) + IV (12B) + Ciphertext
-    const header = new Uint8Array(16 + 12);
-    header.set(fileSalt, 0);
-    header.set(fileIv, 16);
+        worker.onerror = (e) => {
+            reject(e);
+            worker.terminate();
+        };
 
-    const encryptedBlob = new Blob([header, encryptedContent], { type: 'application/octet-stream' });
-
-    // 2. Encrypt metadata
-    const metaSalt = window.crypto.getRandomValues(new Uint8Array(16));
-    const metaIv = window.crypto.getRandomValues(new Uint8Array(12));
-    const metaKey = await deriveKey(password, metaSalt);
-
-    const metaJson = JSON.stringify({
-        name: file.name,
-        type: file.type || 'application/octet-stream',
-        size: file.size
+        file.arrayBuffer().then((fileBuffer) => {
+            worker.postMessage({
+                type: 'ENCRYPT_FILE',
+                payload: {
+                    fileBuffer,
+                    fileName: file.name,
+                    fileType: file.type,
+                    fileSize: file.size,
+                    password
+                }
+            }, [fileBuffer]);
+        }).catch(reject);
     });
-
-    const encoder = new TextEncoder();
-    const encryptedMeta = await window.crypto.subtle.encrypt(
-        { name: 'AES-GCM', iv: metaIv },
-        metaKey,
-        encoder.encode(metaJson)
-    );
-
-    return {
-        encryptedBlob,
-        metadata: {
-            encrypted_metadata: arrayBufferToBase64(encryptedMeta),
-            salt: arrayBufferToBase64(metaSalt.buffer),
-            iv: arrayBufferToBase64(metaIv.buffer)
-        }
-    };
 }
 
 export async function decryptFile(
@@ -156,35 +252,38 @@ export async function decryptFile(
     metaSaltStr: string,
     metaIvStr: string
 ): Promise<{ decryptedFile: File; name: string; type: string }> {
-    // 1. Decrypt metadata
-    const metaSalt = new Uint8Array(base64ToArrayBuffer(metaSaltStr));
-    const metaIv = new Uint8Array(base64ToArrayBuffer(metaIvStr));
-    const metaCiphertext = base64ToArrayBuffer(metaJsonStr);
+    return new Promise((resolve, reject) => {
+        const worker = createWorker();
 
-    const metaKey = await deriveKey(password, metaSalt);
-    const decryptedMeta = await window.crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv: metaIv },
-        metaKey,
-        metaCiphertext
-    );
+        worker.onmessage = (e) => {
+            const { type, payload } = e.data;
+            if (type === 'DECRYPT_FILE_SUCCESS') {
+                const { decryptedBuffer, name, type: fileType } = payload;
+                const decryptedBlob = new Blob([decryptedBuffer], { type: fileType });
+                const decryptedFile = new File([decryptedBlob], name, { type: fileType });
+                resolve({ decryptedFile, name, type: fileType });
+                worker.terminate();
+            } else if (type === 'ERROR') {
+                reject(new Error(payload.message));
+                worker.terminate();
+            }
+        };
 
-    const decoder = new TextDecoder();
-    const { name, type } = JSON.parse(decoder.decode(decryptedMeta));
+        worker.onerror = (e) => {
+            reject(e);
+            worker.terminate();
+        };
 
-    // 2. Decrypt file content (extract Salt and IV from the first 28 bytes)
-    const fileSalt = new Uint8Array(encryptedBuffer.slice(0, 16));
-    const fileIv = new Uint8Array(encryptedBuffer.slice(16, 28));
-    const ciphertext = encryptedBuffer.slice(28);
-
-    const fileKey = await deriveKey(password, fileSalt);
-    const decryptedContent = await window.crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv: fileIv },
-        fileKey,
-        ciphertext
-    );
-
-    const decryptedBlob = new Blob([decryptedContent], { type: type });
-    const decryptedFile = new File([decryptedBlob], name, { type: type });
-
-    return { decryptedFile, name, type };
+        const bufferCopy = encryptedBuffer.slice(0);
+        worker.postMessage({
+            type: 'DECRYPT_FILE',
+            payload: {
+                encryptedBuffer: bufferCopy,
+                password,
+                metaJsonStr,
+                metaSaltStr,
+                metaIvStr
+            }
+        }, [bufferCopy]);
+    });
 }
