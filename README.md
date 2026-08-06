@@ -1,74 +1,128 @@
-# Ilusion Vault 
+<div align="center">
+
+# 🔒 Ilusion Vault
 
 **Open-source, zero-knowledge encrypted data vault for storing and sharing passwords, API keys, and files securely.**
 
-Ilusion Vault lets you encrypt sensitive data directly in your browser and store it permanently — or share it via self-destructing links. The server never sees your plaintext. Access your vault from anywhere with just a URL and your encryption key.
+[![PHP 8.4](https://img.shields.io/badge/PHP-8.4-777BB4?style=flat-square&logo=php&logoColor=white)](https://php.net)
+[![Laravel 11](https://img.shields.io/badge/Laravel-11-FF2D20?style=flat-square&logo=laravel&logoColor=white)](https://laravel.com)
+[![Vue 3](https://img.shields.io/badge/Vue.js-3-4FC08D?style=flat-square&logo=vuedotjs&logoColor=white)](https://vuejs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-Strict-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Tests](https://img.shields.io/badge/Tests-55%20Passed-brightgreen?style=flat-square&logo=pest)](https://pestphp.com)
+[![Static Analysis](https://img.shields.io/badge/PHPStan-Level%200%20Errors-brightgreen)](https://phpstan.org)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
 
-**Live:** [ilusion.io](https://ilusion.io)
+[Live Application](https://ilusion.io) • [Documentation](CONTRIBUTING.md) • [Report Bug](https://github.com/shreyashrpawar/ilusion-vault-repo/issues)
+
+</div>
 
 ---
 
-## Why Ilusion Vault?
+## 🌟 Overview
 
-- Encrypted Vault — Store passwords, API keys, `.env` files, and notes in a persistent encrypted vault accessible from any device.
-- Secure Sharing — Generate self-destructing encrypted links to share credentials safely instead of pasting them in Slack, email, or chat.
-- Zero-Knowledge — The server only stores ciphertext. Your encryption key travels via the URL hash (`#key`), which browsers never send to the server.
-- Open Source — Fully transparent. Audit the code, self-host on your own server, or use our cloud-hosted version at [ilusion.io](https://ilusion.io).
+**Ilusion Vault** is a high-performance, open-source zero-knowledge platform designed to eliminate plain-text credential leaks. Secrets and attached files are encrypted locally inside your browser using **AES-256-GCM WebCrypto APIs** and dedicated **Web Workers** prior to network transmission.
 
-## Features
+The server only stores encrypted ciphertexts and metadata — **your master encryption key never reaches the server or log files**.
 
--  **End-to-End Encryption** — AES-GCM (256-bit) client-side encryption via the Web Crypto API. Plaintext never leaves your browser.
-- **Encrypted File Uploads** — Attach multiple files. Each file is encrypted in-browser before upload to S3/Cloudflare R2.
--  **Auto-Burn & Expiry** — Set data to self-destruct after one view, or expire after 1 Hour, 1 Day, 1 Week — or store permanently.
--  **Recipient Notifications** — Notify multiple recipients via email when you share encrypted data.
--  **Encryption Hints** — Add a hint to help the recipient remember the decryption key without exposing it.
--  **Two-Factor Authentication** — Secure your account with 2FA and WebAuthn Passkeys.
--  **QR Code Sharing** — Every encrypted link comes with a QR code for easy mobile access.
+---
 
-## Tech Stack
+## ✨ Features
 
-| Layer | Technology |
-|---|---|
-| Backend | Laravel 11, PHP 8.3+ |
-| Frontend | Vue 3 (Composition API), Inertia.js |
-| Styling | Tailwind CSS v4 |
-| Auth | Laravel Fortify, WebAuthn (Passkeys), 2FA |
-| Storage | S3-compatible (Cloudflare R2) |
+- 🔐 **Zero-Knowledge Encryption** — AES-GCM (256-bit) client-side encryption powered by WebCrypto. Plaintext and encryption keys never leave your device.
+- 📁 **Encrypted File Uploads** — Direct multi-file uploads with background worker batch encryption and Cloudflare R2 / S3 streaming.
+- ⏱️ **Auto-Burn & Expiration** — Set secrets to self-destruct after 1 view, 1 Hour, 1 Day, 1 Week, or retain permanently in your encrypted vault.
+- ⚡ **High-Performance Crypto Engine** — PBKDF2 key derivation and batch encryption handled seamlessly via background Web Workers for smooth UI responsiveness.
+- 🔑 **Two-Factor Authentication** — Account security backed by Laravel Fortify 2FA and TOTP support.
+- 📧 **Recipient Notifications** — Secure email dispatch notifying target recipients when encrypted payloads are ready.
+- 📱 **QR Code Sharing** — Instant mobile decryption key access via generated QR codes.
 
-## Requirements
+---
 
-- PHP 8.2+
-- Composer
-- Node.js (v18+) & NPM
-- SQLite, MySQL, or PostgreSQL
-- An S3-compatible storage provider (e.g., Cloudflare R2) for encrypted file uploads
+## 🏗️ Architecture & Security Model
 
-## Quick Start
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/ilusion-io/ilusion-vault.git
-cd ilusion-vault
-
-# 2. Install dependencies
-composer install
-npm install
-
-# 3. Configure environment
-cp .env.example .env
-php artisan key:generate
-
-# 4. Run migrations
-php artisan migrate
-
-# 5. Build frontend & start server
-npm run build
-php artisan serve
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                              CLIENT BROWSER                             │
+│                                                                         │
+│  Plaintext Data / File ──► Web Worker (PBKDF2 / AES-256-GCM) ──► Ciphertext
+└────────────────────────────────────┬────────────────────────────────────┘
+                                     │ (Network Payload)
+                                     ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                             LARAVEL BACKEND                             │
+│                                                                         │
+│  Stores: Ciphertext Metadata & Encrypted Objects (S3/R2)               │
+│  NEVER Sees: Plaintext, Passphrases, or URL Hash (#key)                │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Configure Encrypted File Storage (Cloudflare R2 / S3)
+1. **Browser Encryption**: Passphrase derivation uses 600,000-iteration PBKDF2 key hashing inside Web Workers.
+2. **Zero-Knowledge Link Transmission**: Decryption keys travel inside the URL hash fragment (`#key`). RFC specifications guarantee browsers never send hash fragments to backend web servers.
 
-Add the following to your `.env` file:
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technology & Standards |
+|---|---|
+| **Language & Runtime** | PHP 8.4+ (Strict Types, Nullable Types, Typed Properties) |
+| **Backend Framework** | Laravel 11.x, Laravel Fortify |
+| **Frontend Framework** | Vue 3 (Composition API `<script setup lang="ts">`), Inertia.js |
+| **Type System** | TypeScript (Strict Mode), ESLint |
+| **Database** | SQLite, MySQL 8+, PostgreSQL |
+| **Object Storage** | S3-Compatible (Cloudflare R2, AWS S3) |
+| **Testing & Quality** | Pest PHP (55 Tests), PHPStan Static Analysis |
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+- **PHP 8.4+**
+- **Composer 2.x**
+- **Node.js 18+** & **npm**
+- **SQLite** or **MySQL**
+
+### Setup Instructions
+
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/shreyashrpawar/ilusion-vault-repo.git
+   cd ilusion-vault-repo
+   ```
+
+2. **Install PHP and Node dependencies**:
+   ```bash
+   composer install
+   npm install
+   ```
+
+3. **Environment Setup**:
+   ```bash
+   cp .env.example .env
+   php artisan key:generate
+   ```
+
+4. **Database & Migrations**:
+   ```bash
+   touch database/database.sqlite
+   php artisan migrate --seed
+   ```
+
+5. **Start Development Servers**:
+   ```bash
+   # Run Laravel Backend
+   php artisan serve
+
+   # Run Vite Development Server
+   npm run dev
+   ```
+
+---
+
+## ⚙️ Encrypted Storage Configuration (Cloudflare R2 / S3)
+
+To enable zero-knowledge encrypted file uploads, configure your S3 or Cloudflare R2 credentials in `.env`:
 
 ```env
 FILESYSTEM_DISK=r2
@@ -80,31 +134,34 @@ R2_URL="https://your-custom-domain.com"
 R2_ENDPOINT="https://<ACCOUNT_ID>.r2.cloudflarestorage.com"
 ```
 
-## How It Works
+---
 
+## 🧪 Testing & Code Quality
+
+Maintaining high code quality and strict type safety is mandatory for Ilusion Vault.
+
+```bash
+# Run Pest test suite (55 tests)
+vendor/bin/pest
+
+# Run PHPStan static analysis (Level 0 errors)
+vendor/bin/phpstan analyse --memory-limit=2G
+
+# Run ESLint frontend linting (0 errors)
+npm run lint
+
+# Build production assets
+npm run build
 ```
-┌─────────────┐     Encrypted Data      ┌─────────────┐
-│   Browser    │ ──────────────────────► │   Server    │
-│ (Encrypts)   │                         │ (Stores     │
-│              │     URL + #Key          │  Ciphertext)│
-│              │ ◄────────────────────── │             │
-└─────────────┘                          └─────────────┘
-```
 
-1. You enter your data and an encryption key in the browser.
-2. The browser encrypts everything locally using AES-256-GCM.
-3. Only the **ciphertext** is sent to the server.
-4. You receive a URL with the decryption key in the hash fragment (`#key`).
-5. The hash fragment is **never** transmitted to the server — it stays client-side.
+---
 
-## Managed Hosting
+## 🤝 Contributing
 
-Don't want to self-host? Use our cloud-hosted version at **[ilusion.io](https://ilusion.io)** — or [contact us](https://ilusion.io/contact) if you need help deploying Ilusion Vault on your own infrastructure.
+We welcome community contributions! Please read our [CONTRIBUTING.md](CONTRIBUTING.md) guide before opening pull requests or reporting security issues.
 
-## Contributing
+---
 
-Contributions, issues, and feature requests are welcome! Feel free to check the [issues page](https://github.com/ilusion-io/ilusion-vault/issues).
+## 📄 License
 
-## License
-
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+Ilusion Vault is open-source software licensed under the [MIT License](LICENSE).
