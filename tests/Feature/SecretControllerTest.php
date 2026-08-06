@@ -114,7 +114,8 @@ test('downloading file via signed route streams the file and deletes it if burn 
         [
             'path' => $path,
             'burn' => '1',
-        ]
+        ],
+        absolute: false
     );
 
     // Request the download
@@ -142,7 +143,8 @@ test('cannot download file directly without decrypted app header', function () {
         [
             'path' => $path,
             'burn' => '1',
-        ]
+        ],
+        absolute: false
     );
 
     $response = $this->get($signedUrl);

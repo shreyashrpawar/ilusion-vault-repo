@@ -20,7 +20,6 @@ const {
     secretKey,
     recoveryCodes,
     errors,
-    clearErrors,
     enable,
     confirm,
     disable,
@@ -38,7 +37,7 @@ const handleEnable = async () => {
     try {
         await enable();
         setupModalOpen.value = true;
-    } catch (e: any) {
+    } catch {
         localErrors.value = errors.value;
     }
 };
@@ -67,7 +66,7 @@ const handleDisable = async () => {
         showingRecoveryCodes.value = false;
         // Reload parent props to update twoFactorEnabled status
         router.reload({ only: ['twoFactorEnabled'] });
-    } catch (e: any) {
+    } catch {
         localErrors.value = errors.value;
     }
 };
@@ -78,7 +77,7 @@ const handleShowRecoveryCodes = async () => {
     try {
         await fetchRecoveryCodes();
         showingRecoveryCodes.value = !showingRecoveryCodes.value;
-    } catch (e: any) {
+    } catch {
         localErrors.value = ['Failed to fetch recovery codes.'];
     }
 };

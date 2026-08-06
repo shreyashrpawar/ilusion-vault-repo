@@ -86,7 +86,7 @@ export async function decryptText(jsonStr: string, password: string): Promise<st
         const decoder = new TextDecoder();
 
         return decoder.decode(decrypted);
-    } catch (e) {
+    } catch {
         throw new Error('Incorrect decryption key or corrupted payload.');
     }
 }
@@ -120,6 +120,7 @@ export async function createBatchWorker(password: string): Promise<{
     await new Promise<void>((resolve, reject) => {
         const handler = (e: MessageEvent) => {
             worker.removeEventListener('message', handler);
+
             if (e.data.type === 'INIT_SUCCESS') {
                 resolve();
             } else {
@@ -137,6 +138,7 @@ export async function createBatchWorker(password: string): Promise<{
                 const handler = (e: MessageEvent) => {
                     worker.removeEventListener('message', handler);
                     const { type, payload } = e.data;
+
                     if (type === 'ENCRYPT_FILE_SUCCESS') {
                         const encryptedBlob = new Blob([payload.encryptedBuffer], { type: 'application/octet-stream' });
                         resolve({ encryptedBlob, metadata: payload.metadata });
@@ -165,6 +167,7 @@ export async function createBatchWorker(password: string): Promise<{
                 const handler = (e: MessageEvent) => {
                     worker.removeEventListener('message', handler);
                     const { type, payload } = e.data;
+
                     if (type === 'DECRYPT_FILE_SUCCESS') {
                         const decryptedBlob = new Blob([payload.decryptedBuffer], { type: payload.type });
                         const decryptedFile = new File([decryptedBlob], payload.name, { type: payload.type });
@@ -214,6 +217,7 @@ export async function encryptFile(
 
         worker.onmessage = (e) => {
             const { type, payload } = e.data;
+
             if (type === 'ENCRYPT_FILE_SUCCESS') {
                 const { encryptedBuffer, metadata } = payload;
                 const encryptedBlob = new Blob([encryptedBuffer], { type: 'application/octet-stream' });
@@ -257,6 +261,7 @@ export async function decryptFile(
 
         worker.onmessage = (e) => {
             const { type, payload } = e.data;
+
             if (type === 'DECRYPT_FILE_SUCCESS') {
                 const { decryptedBuffer, name, type: fileType } = payload;
                 const decryptedBlob = new Blob([decryptedBuffer], { type: fileType });

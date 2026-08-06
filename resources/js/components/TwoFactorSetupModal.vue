@@ -47,7 +47,7 @@ const handleConfirm = async () => {
     try {
         await props.onConfirm(code.value);
         code.value = '';
-    } catch (e) {
+    } catch {
         // Errors are populated by parent/composable prop
     } finally {
         localConfirming.value = false;

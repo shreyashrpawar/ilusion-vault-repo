@@ -48,12 +48,18 @@ export function useConfirm() {
 
     const handleConfirm = () => {
         isVisible.value = false;
-        if (resolvePromise) resolvePromise(true);
+
+        if (resolvePromise) {
+resolvePromise(true);
+}
     };
 
     const handleCancel = () => {
         isVisible.value = false;
-        if (resolvePromise) resolvePromise(false);
+
+        if (resolvePromise) {
+resolvePromise(false);
+}
     };
 
     return {

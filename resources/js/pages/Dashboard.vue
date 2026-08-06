@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { Head, usePage, Link, router } from '@inertiajs/vue3';
+import axios from 'axios';
 import { computed, ref, onMounted, onUnmounted } from 'vue';
-import { logout } from '@/routes';
 import { toast } from 'vue-sonner';
+import ConfirmModal from '@/components/ConfirmModal.vue';
 import { Toaster } from '@/components/ui/sonner';
 import { useConfirm } from '@/composables/useConfirm';
-import ConfirmModal from '@/components/ConfirmModal.vue';
-import axios from 'axios';
 import { encryptFile, encryptText, decryptFile, createBatchWorker, deriveKey, base64ToArrayBuffer } from '@/lib/crypto';
+import { logout } from '@/routes';
 
 const { confirm } = useConfirm();
 const page = usePage();
@@ -58,6 +58,7 @@ const fileInput = ref<HTMLInputElement | null>(null);
 const decryptVaultFiles = async (passphrase: string) => {
     if (vaultFilesRaw.value.length === 0) {
         vaultFiles.value = [];
+
         return;
     }
 
@@ -68,11 +69,13 @@ const decryptVaultFiles = async (passphrase: string) => {
 
     const getCachedKey = async (saltB64: string): Promise<CryptoKey> => {
         let key = keyCache.get(saltB64);
+
         if (!key) {
             const saltBuffer = base64ToArrayBuffer(saltB64);
             key = await deriveKey(passphrase, new Uint8Array(saltBuffer), 600000);
             keyCache.set(saltB64, key);
         }
+
         return key;
     };
 
@@ -90,6 +93,7 @@ const decryptVaultFiles = async (passphrase: string) => {
                 );
 
                 const meta = JSON.parse(new TextDecoder().decode(decrypted));
+
                 return {
                     ...file,
                     name: meta.name || `File #${file.id}`,
@@ -98,7 +102,7 @@ const decryptVaultFiles = async (passphrase: string) => {
                     selected: false,
                     decryptError: false
                 };
-            } catch (e) {
+            } catch {
                 return {
                     ...file,
                     name: `File #${file.id} (Decryption Error)`,
@@ -113,6 +117,7 @@ const decryptVaultFiles = async (passphrase: string) => {
 
     // If ALL files failed decryption and raw files exist, passphrase is invalid
     const validCount = decryptedFiles.filter(f => !f.decryptError).length;
+
     if (vaultFilesRaw.value.length > 0 && validCount === 0) {
         throw new Error('Incorrect passphrase');
     }
@@ -123,13 +128,15 @@ const decryptVaultFiles = async (passphrase: string) => {
 
 const fetchVaultFiles = async () => {
     isFetchingFiles.value = true;
+
     try {
         const res = await axios.get('/api/vault/files');
         vaultFilesRaw.value = res.data;
+
         if (isVaultUnlocked.value && vaultPassphrase.value) {
             await decryptVaultFiles(vaultPassphrase.value);
         }
-    } catch (e) {
+    } catch {
         toast.error('Failed to fetch vault files.');
     } finally {
         isFetchingFiles.value = false;
@@ -152,8 +159,12 @@ onUnmounted(() => {
 });
 
 const formatBytes = (bytes: number) => {
-    if (bytes === 0) return '0 Bytes';
+    if (bytes === 0) {
+return '0 Bytes';
+}
+
     const k = 1024, sizes = ['Bytes', 'KB', 'MB', 'GB'], i = Math.floor(Math.log(bytes) / Math.log(k));
+
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 };
 
@@ -171,9 +182,12 @@ const copyToClipboard = (text: string) => {
 
 // Vault Actions
 const unlockVault = async () => {
-    if (!vaultPassphrase.value) return toast.error('Enter a passphrase');
+    if (!vaultPassphrase.value) {
+return toast.error('Enter a passphrase');
+}
     
     isUnlocking.value = true;
+
     try {
         if (isFetchingFiles.value) {
             // Wait for in-flight fetch to complete if user clicks unlock early
@@ -200,6 +214,7 @@ let dragCounter = 0;
 
 const handleDragEnter = (e: DragEvent) => {
     e.preventDefault();
+
     if (e.dataTransfer?.types.includes('Files')) {
         dragCounter++;
         isDragging.value = true;
@@ -209,6 +224,7 @@ const handleDragEnter = (e: DragEvent) => {
 const handleDragLeave = (e: DragEvent) => {
     e.preventDefault();
     dragCounter--;
+
     if (dragCounter <= 0) {
         isDragging.value = false;
         dragCounter = 0;
@@ -226,6 +242,7 @@ const handleDrop = async (e: DragEvent) => {
     
     if (!isVaultUnlocked.value) {
         toast.error('Please unlock your vault first before dragging and dropping files.');
+
         return;
     }
 
@@ -240,9 +257,11 @@ const uploadStage = ref('');
 
 const processUpload = async (filesArray: File[]) => {
     const MAX_SIZE = 100 * 1024 * 1024; // 100MB
+
     for (const file of filesArray) {
         if (file.size > MAX_SIZE) {
             toast.error(`File "${file.name}" exceeds the maximum upload limit of 100MB.`);
+
             return;
         }
     }
@@ -259,6 +278,7 @@ const processUpload = async (filesArray: File[]) => {
         
         try {
             const metadataArr = [];
+
             for (let i = 0; i < filesArray.length; i++) {
                 const file = filesArray[i];
                 uploadStage.value = `Encrypting ${i + 1}/${filesArray.length} (${file.name})...`;
@@ -316,11 +336,17 @@ const triggerFileUpload = () => fileInput.value?.click();
 
 const handleFileUpload = async (event: Event) => {
     const target = event.target as HTMLInputElement;
-    if (!target.files || target.files.length === 0) return;
+
+    if (!target.files || target.files.length === 0) {
+return;
+}
     
     const filesArray = Array.from(target.files);
     await processUpload(filesArray);
-    if (target) target.value = '';
+
+    if (target) {
+target.value = '';
+}
 };
 
 const deleteVaultFile = async (id: number) => {
@@ -330,7 +356,7 @@ const deleteVaultFile = async (id: number) => {
             vaultFiles.value = vaultFiles.value.filter(f => f.id !== id);
             vaultFilesRaw.value = vaultFilesRaw.value.filter(f => f.id !== id);
             toast.success('File deleted.');
-        } catch (e) {
+        } catch {
             toast.error('Deletion failed.');
         }
     }
@@ -342,7 +368,7 @@ const deleteSecret = async (secretId: string) => {
             await axios.delete(`/api/secrets/${secretId}`);
             localSecrets.value = localSecrets.value.filter(s => s.secret_id !== secretId);
             toast.success('Secret deleted.');
-        } catch (e) {
+        } catch {
             toast.error('Deletion failed.');
         }
     }
@@ -371,13 +397,20 @@ const shareForm = ref({
 const generateRandomPassword = () => {
     const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_';
     let p = '';
-    for (let i = 0; i < 16; i++) p += chars.charAt(Math.floor(Math.random() * chars.length));
+
+    for (let i = 0; i < 16; i++) {
+p += chars.charAt(Math.floor(Math.random() * chars.length));
+}
+
     shareForm.value.password = p;
 };
 
 const initiateShare = () => {
     const selected = vaultFiles.value.filter(f => f.selected);
-    if (selected.length === 0) return toast.error('Select at least one file to share.');
+
+    if (selected.length === 0) {
+return toast.error('Select at least one file to share.');
+}
     
     shareForm.value = { password: '', expiry: '7 Days', burn_on_read: false, identifier: '', recipient_email: '', message: '' };
     generateRandomPassword();
@@ -386,7 +419,9 @@ const initiateShare = () => {
 };
 
 const executeShare = async () => {
-    if (!shareForm.value.password) return toast.error('Share password is required.');
+    if (!shareForm.value.password) {
+return toast.error('Share password is required.');
+}
     
     const selected = vaultFiles.value.filter(f => f.selected);
     isSharing.value = true;
@@ -427,8 +462,14 @@ const executeShare = async () => {
         formData.append('file_metadata', JSON.stringify(metadataArr));
         formData.append('expiry', shareForm.value.expiry);
         formData.append('burn_on_read', shareForm.value.burn_on_read ? '1' : '0');
-        if (shareForm.value.identifier) formData.append('identifier', shareForm.value.identifier);
-        if (shareForm.value.recipient_email) formData.append('recipient_email', shareForm.value.recipient_email);
+
+        if (shareForm.value.identifier) {
+formData.append('identifier', shareForm.value.identifier);
+}
+
+        if (shareForm.value.recipient_email) {
+formData.append('recipient_email', shareForm.value.recipient_email);
+}
         
         // The backend requires a payload, so we provide a default message if none is entered.
         const messageText = shareForm.value.message || 'Secure files shared via Ilusion Vault.';
@@ -469,6 +510,7 @@ const executeShare = async () => {
 
 const closeShareModal = () => {
     isShareModalOpen.value = false;
+
     if (generatedShareUrl.value) {
         // Switch to secrets tab to see new link
         activeTab.value = 'secrets';

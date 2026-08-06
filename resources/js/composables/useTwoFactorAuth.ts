@@ -103,7 +103,7 @@ export function useTwoFactorAuth() {
         try {
             await axios.post('/user/two-factor-recovery-codes');
             await fetchRecoveryCodes();
-        } catch (e: any) {
+        } catch {
             errors.value = ['Failed to regenerate recovery codes.'];
         }
     };

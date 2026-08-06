@@ -3,7 +3,10 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use App\Models\Secret;
+use App\Models\User;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Storage;
@@ -12,8 +15,9 @@ use App\Mail\SecretSent;
 
 class SecretController extends Controller
 {
-    public function store(Request $request)
+    public function store(Request $request): JsonResponse
     {
+        /** @var User|null $user */
         $user = auth()->guard('sanctum')->user() ?? auth()->user();
 
         $request->validate([
@@ -148,7 +152,7 @@ class SecretController extends Controller
         ]);
     }
 
-    public function show($secretId)
+    public function show(string $secretId): JsonResponse
     {
         $secret = Secret::where('secret_id', $secretId)->first();
 
@@ -218,7 +222,7 @@ class SecretController extends Controller
         return response()->json($payload);
     }
 
-    public function burn($secretId)
+    public function burn(string $secretId): JsonResponse
     {
         $secret = Secret::where('secret_id', $secretId)->first();
 
@@ -235,13 +239,13 @@ class SecretController extends Controller
         return response()->json(['message' => 'Secret burned successfully.']);
     }
 
-    public function downloadFile(Request $request)
+    public function downloadFile(Request $request): StreamedResponse
     {
         if (!$request->hasHeader('X-Vault-Decrypted') && !$request->hasHeader('x-vault-decrypted')) {
             abort(403, 'Direct access to file downloads is not allowed. Files must be decrypted and requested through the application.');
         }
 
-        $path = $request->input('path');
+        $path = (string) $request->input('path');
         $burn = $request->input('burn');
 
         if (!Storage::disk('r2')->exists($path)) {
@@ -268,7 +272,7 @@ class SecretController extends Controller
         }, basename($path), $headers);
     }
 
-    public function destroy($secretId)
+    public function destroy(string $secretId): JsonResponse
     {
         $secret = Secret::where('secret_id', $secretId)->first();
 
@@ -278,6 +282,7 @@ class SecretController extends Controller
 
         // If the secret belongs to a registered user, only the owner can delete it.
         if ($secret->user_id !== null) {
+            /** @var User|null $currentUser */
             $currentUser = auth()->guard('sanctum')->user() ?? auth()->user();
             if (!$currentUser || $currentUser->id != $secret->user_id) {
                 return response()->json(['message' => 'Unauthorized.'], 403);

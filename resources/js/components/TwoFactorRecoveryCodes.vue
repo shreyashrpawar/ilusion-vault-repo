@@ -23,7 +23,7 @@ const handleRegenerate = async () => {
 
     try {
         await props.onRegenerate();
-    } catch (e) {
+    } catch {
         error.value = 'Failed to regenerate recovery codes.';
     } finally {
         regenerating.value = false;

@@ -14,13 +14,13 @@ class SecretSent extends Mailable
 {
     use Queueable, SerializesModels;
 
-    public $secretUrl;
-    public $senderName;
+    public string $secretUrl;
+    public ?string $senderName;
 
     /**
      * Create a new message instance.
      */
-    public function __construct($secretUrl, $senderName = null)
+    public function __construct(string $secretUrl, ?string $senderName = null)
     {
         $this->secretUrl = $secretUrl;
         $this->senderName = $senderName;

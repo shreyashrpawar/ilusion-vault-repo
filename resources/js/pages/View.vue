@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
 import axios from 'axios';
+import DOMPurify from 'dompurify';
+import { marked } from 'marked';
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { toast } from 'vue-sonner';
-import { Toaster } from '@/components/ui/sonner';
-import { useConfirm } from '@/composables/useConfirm';
 import ConfirmModal from '@/components/ConfirmModal.vue';
+import { Toaster } from '@/components/ui/sonner';
 import {
     decryptText,
     decryptFile,
@@ -13,10 +14,6 @@ import {
     deriveKey
 } from '@/lib/crypto';
 import { login, home, logout } from '@/routes';
-import { marked } from 'marked';
-import DOMPurify from 'dompurify';
-
-const { confirm } = useConfirm();
 
 const props = defineProps<{
     initialSecretId?: string;
@@ -46,12 +43,17 @@ const previewingFile = ref<{ name: string; type: string; url: string; textConten
 const decryptedCopied = ref(false);
 
 const renderedMarkdown = computed(() => {
-    if (!decryptedPayload.value) return '';
+    if (!decryptedPayload.value) {
+return '';
+}
+
     try {
         const rawHtml = marked.parse(decryptedPayload.value, { async: false }) as string;
+
         return DOMPurify.sanitize(rawHtml);
     } catch (e) {
         console.error('Failed to parse markdown:', e);
+
         return decryptedPayload.value;
     }
 });
@@ -106,6 +108,7 @@ async function handleDecrypt() {
             } catch (burnError: any) {
                 console.error('Failed to burn secret:', burnError);
                 decryptError.value = 'This secret has already been burned and cannot be viewed.';
+
                 return;
             }
         }
@@ -115,7 +118,7 @@ async function handleDecrypt() {
         if (fetchedSecretPayload.value.encryption_hint) {
             try {
                 decryptedHint.value = await decryptText(fetchedSecretPayload.value.encryption_hint, decryptionKey.value.trim());
-            } catch (error) {
+            } catch {
                 console.error('Failed to decrypt hint');
             }
         }
@@ -213,7 +216,11 @@ function triggerDownload(url: string, filename: string) {
 
 function getFileTypeByName(name: string): string {
     const ext = name.split('.').pop()?.toLowerCase();
-    if (!ext) return 'application/octet-stream';
+
+    if (!ext) {
+return 'application/octet-stream';
+}
+
     const mimeTypes: Record<string, string> = {
         'png': 'image/png',
         'jpg': 'image/jpeg',
@@ -234,29 +241,53 @@ function getFileTypeByName(name: string): string {
         'mp4': 'video/mp4',
         'webm': 'video/webm'
     };
+
     return mimeTypes[ext] || 'application/octet-stream';
 }
 
 function getFileIcon(type: string, name: string): string {
     const t = (type || getFileTypeByName(name)).toLowerCase();
-    if (t.startsWith('image/')) return 'image';
-    if (t.startsWith('video/')) return 'movie';
-    if (t.startsWith('audio/')) return 'audio_file';
-    if (t.includes('pdf')) return 'picture_as_pdf';
-    if (t.includes('text/') || t.includes('json') || t.includes('javascript') || t.includes('typescript')) return 'description';
-    if (t.includes('zip') || t.includes('tar') || t.includes('rar') || t.includes('compressed')) return 'zip_box';
+
+    if (t.startsWith('image/')) {
+return 'image';
+}
+
+    if (t.startsWith('video/')) {
+return 'movie';
+}
+
+    if (t.startsWith('audio/')) {
+return 'audio_file';
+}
+
+    if (t.includes('pdf')) {
+return 'picture_as_pdf';
+}
+
+    if (t.includes('text/') || t.includes('json') || t.includes('javascript') || t.includes('typescript')) {
+return 'description';
+}
+
+    if (t.includes('zip') || t.includes('tar') || t.includes('rar') || t.includes('compressed')) {
+return 'zip_box';
+}
+
     return 'draft';
 }
 
 async function handlePreviewFile(index: number) {
     const file = decryptedFiles.value[index];
-    if (!file) return;
+
+    if (!file) {
+return;
+}
 
     let dataUrl = file.decryptedDataUrl;
     let textContent = file.decryptedTextContent;
 
     if (!dataUrl) {
         file.isDecrypting = true;
+
         try {
             const payloadFile = fetchedSecretPayload.value.file_paths[index];
             const response = await axios.get(payloadFile.download_url, {
@@ -285,6 +316,7 @@ async function handlePreviewFile(index: number) {
                            file.name.endsWith('.ts') ||
                            file.name.endsWith('.css') ||
                            file.name.endsWith('.html');
+
             if (isText) {
                 const text = await decryptedFile.text();
                 textContent = text;
@@ -294,6 +326,7 @@ async function handlePreviewFile(index: number) {
             console.error('File decryption for preview failed:', error);
             toast.error('Failed to decrypt file for preview.');
             file.isDecrypting = false;
+
             return;
         } finally {
             file.isDecrypting = false;
@@ -344,20 +377,6 @@ function handleClearRetrieved() {
     
     // Clear URL parameters
     window.history.replaceState({}, document.title, '/view');
-}
-
-function formatExpiryDate(dateStr?: string) {
-    if (!dateStr) {
-return '';
-}
-
-    try {
-        const date = new Date(dateStr);
-
-        return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-    } catch {
-        return '';
-    }
 }
 
 onMounted(() => {

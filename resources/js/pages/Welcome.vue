@@ -1,14 +1,13 @@
 <script setup lang="ts">
-import { Head, Link, usePage, router } from '@inertiajs/vue3';
-import { ref, computed, onMounted, watch } from 'vue';
+import { Head, Link, usePage } from '@inertiajs/vue3';
 import { useStorage } from '@vueuse/core';
+import axios from 'axios';
+import { ref, computed, onMounted, watch } from 'vue';
 import { toast } from 'vue-sonner';
+import ConfirmModal from '@/components/ConfirmModal.vue';
 import { Toaster } from '@/components/ui/sonner';
 import { useConfirm } from '@/composables/useConfirm';
-import ConfirmModal from '@/components/ConfirmModal.vue';
-import { encryptText } from '@/lib/crypto';
-import { profile, login, home, logout } from '@/routes';
-import axios from 'axios';
+import { login, home, logout } from '@/routes';
 
 const { confirm } = useConfirm();
 
@@ -36,7 +35,10 @@ const localSecrets = ref<Secret[]>([...props.secrets]);
 const guestSecrets = useStorage<Secret[]>('ilusion_guest_secrets', []);
 
 const displayedSecrets = computed(() => {
-    if (isLoggedIn.value) return localSecrets.value;
+    if (isLoggedIn.value) {
+return localSecrets.value;
+}
+
     return guestSecrets.value.filter(s => new Date(s.expiry_date) > new Date());
 });
 
@@ -68,14 +70,17 @@ const deleteSecret = async (secretId: string) => {
         cancelText: 'Keep it',
         type: 'danger'
     });
+
     if (isConfirmed) {
         try {
             await axios.delete(`/api/secrets/${secretId}`);
+
             if (isLoggedIn.value) {
                 localSecrets.value = localSecrets.value.filter(s => s.secret_id !== secretId);
             } else {
                 guestSecrets.value = guestSecrets.value.filter(s => s.secret_id !== secretId);
             }
+
             toast.success('Secret deleted successfully.');
         } catch (error: any) {
             toast.error('Failed to delete secret: ' + (error.response?.data?.message || error.message));
@@ -94,12 +99,18 @@ onMounted(() => {
     const maxIterations = targetText.length;
     const interval = setInterval(() => {
         displayText.value = targetText.split('').map((char, idx) => {
-            if (idx < iteration) { return char; }
-            if (char === ' ') { return ' '; }
+            if (idx < iteration) {
+ return char; 
+}
+
+            if (char === ' ') {
+ return ' '; 
+}
 
             return scrambleChars[Math.floor(Math.random() * scrambleChars.length)];
         }).join('');
         iteration += 0.5;
+
         if (iteration >= maxIterations) {
             clearInterval(interval);
             displayText.value = targetText;
@@ -123,57 +134,6 @@ onMounted(() => {
             });
     }
 });
-
-function formatExpiryDate(dateStr?: string) {
-    if (!dateStr) {
-        return '';
-    }
-
-    try {
-        const date = new Date(dateStr);
-
-        return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-    } catch {
-        return '';
-    }
-}
-
-// Live interactive encryption playground state
-const playgroundPlaintext = ref('database_url="postgresql://db_user:password@localhost:5432/production"');
-const playgroundKey = ref('browser-random-key-xyz');
-const isPlaygroundEncrypting = ref(false);
-const playgroundEncrypted = ref(false);
-const playgroundResult = ref<{ ciphertext: string; salt: string; iv: string } | null>(null);
-
-const generatedDemoLink = computed(() => {
-    if (!playgroundResult.value) {
-return '';
-}
-
-    return `https://ilusion.io/secret/s_${Math.random().toString(36).substring(2, 10)}`;
-});
-
-async function handlePlaygroundEncrypt() {
-    if (!playgroundPlaintext.value.trim() || !playgroundKey.value.trim()) {
-return;
-}
-    
-    isPlaygroundEncrypting.value = true;
-    playgroundEncrypted.value = false;
-    
-    // Simulate encryption processing time for a nice animation effect
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    
-    try {
-        const jsonStr = await encryptText(playgroundPlaintext.value, playgroundKey.value);
-        playgroundResult.value = JSON.parse(jsonStr);
-        playgroundEncrypted.value = true;
-    } catch (err) {
-        console.error(err);
-    } finally {
-        isPlaygroundEncrypting.value = false;
-    }
-}
 
 const activeFaqIndex = ref<number | null>(null);
 

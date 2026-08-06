@@ -74,9 +74,7 @@ self.onmessage = async (e: MessageEvent) => {
                 type: 'INIT_SUCCESS',
                 payload: { salt: arrayBufferToBase64(salt.buffer) }
             });
-        }
-        // ── ENCRYPT FILE ───────────────────────────────────────────────
-        else if (type === 'ENCRYPT_FILE') {
+        } else if (type === 'ENCRYPT_FILE') {
             const { fileBuffer, fileName, fileType, fileSize, password } = payload;
 
             // Determine the key to use: cached (batch) or derive fresh (one-off)
@@ -142,9 +140,7 @@ self.onmessage = async (e: MessageEvent) => {
                     }
                 }
             }, [combined.buffer]);
-        }
-        // ── DECRYPT FILE ───────────────────────────────────────────────
-        else if (type === 'DECRYPT_FILE') {
+        } else if (type === 'DECRYPT_FILE') {
             const { encryptedBuffer, password, metaJsonStr, metaSaltStr, metaIvStr } = payload;
 
             // 1. Decrypt metadata
@@ -153,6 +149,7 @@ self.onmessage = async (e: MessageEvent) => {
             const metaCiphertext = base64ToArrayBuffer(metaJsonStr);
 
             let metaKey: CryptoKey;
+
             if (cachedKey && cachedSalt && arrayBufferToBase64(metaSalt.buffer) === arrayBufferToBase64(cachedSalt.buffer)) {
                 metaKey = cachedKey;
             } else {
@@ -174,6 +171,7 @@ self.onmessage = async (e: MessageEvent) => {
             const ciphertext = encryptedBuffer.slice(28);
 
             let fileKey: CryptoKey;
+
             if (cachedKey && cachedSalt && arrayBufferToBase64(fileSalt.buffer) === arrayBufferToBase64(cachedSalt.buffer)) {
                 fileKey = cachedKey;
             } else {

@@ -2,7 +2,6 @@
 import { Link, usePage } from '@inertiajs/vue3';
 import { User, Shield } from '@lucide/vue';
 import { computed } from 'vue';
-import Heading from '@/components/Heading.vue';
 import { useCurrentUrl } from '@/composables/useCurrentUrl';
 import { toUrl } from '@/lib/utils';
 import { logout } from '@/routes';

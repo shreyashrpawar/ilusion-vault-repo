@@ -65,11 +65,12 @@ class AppServiceProvider extends ServiceProvider
         });
 
         \Illuminate\Auth\Notifications\VerifyEmail::toMailUsing(function (object $notifiable, string $url) {
+            /** @var object{name?: string} $notifiable */
             return (new \Illuminate\Notifications\Messages\MailMessage)
                 ->subject('Verify Your Ilusion Account')
                 ->markdown('emails.verify_email', [
                     'url' => $url,
-                    'name' => $notifiable->name
+                    'name' => $notifiable->name ?? ''
                 ]);
         });
     }

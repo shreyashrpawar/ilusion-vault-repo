@@ -1,19 +1,19 @@
 <script setup lang="ts">
 import { Head, Link, usePage, router } from '@inertiajs/vue3';
-import axios from 'axios';
-import { ref, computed, watch } from 'vue';
 import { useStorage } from '@vueuse/core';
+import axios from 'axios';
+import DOMPurify from 'dompurify';
+import { marked } from 'marked';
+import { ref, computed } from 'vue';
 import { toast } from 'vue-sonner';
+import ConfirmModal from '@/components/ConfirmModal.vue';
 import { Toaster } from '@/components/ui/sonner';
 import { useConfirm } from '@/composables/useConfirm';
-import ConfirmModal from '@/components/ConfirmModal.vue';
 import {
     encryptText,
     encryptFile,
 } from '@/lib/crypto';
-import { login, home, logout } from '@/routes';
-import { marked } from 'marked';
-import DOMPurify from 'dompurify';
+import { login, logout } from '@/routes';
 
 const { confirm } = useConfirm();
 
@@ -33,7 +33,11 @@ const guestActiveSecrets = computed(() => {
 
 const isGuestLimitReached = computed(() => {
     const isLogged = !!usePage().props.auth?.user;
-    if (isLogged) return false;
+
+    if (isLogged) {
+return false;
+}
+
     return guestActiveSecrets.value.length >= 3;
 });
 
@@ -54,26 +58,12 @@ async function handleExpiryChange(e: Event) {
             cancelText: 'Cancel',
             type: 'info'
         });
+
         if (isConfirmed) {
             router.visit(login());
         }
     } else {
         expiry.value = newVal;
-    }
-}
-
-async function handleRecipientEmailClick() {
-    if (!usePage().props.auth?.user) {
-        const isConfirmed = await confirm({
-            title: 'Login Required',
-            message: 'You must be signed in to send secrets directly to recipient emails.',
-            confirmText: 'Sign In',
-            cancelText: 'Cancel',
-            type: 'info'
-        });
-        if (isConfirmed) {
-            router.visit(login());
-        }
     }
 }
 
@@ -113,7 +103,6 @@ const copied = ref(false);
 
 const activeTab = ref<'write' | 'preview'>('write');
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
-const activeFocus = ref<string | null>(null);
 
 function generateRandomKey(length = 16): string {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -181,6 +170,7 @@ async function handleCreateSecret() {
 
     if (!password.value.trim()) {
         toast.error('Please enter or generate a decryption key.');
+
         return;
     }
 
@@ -252,7 +242,7 @@ async function handleCreateSecret() {
         uploadProgress.value = 100;
         await new Promise(resolve => setTimeout(resolve, 300));
 
-        let finalUrl = response.data.url;
+        const finalUrl = response.data.url;
 
         createdSecretId.value = response.data.secret_id;
         createdLink.value = finalUrl;
@@ -270,6 +260,7 @@ async function handleCreateSecret() {
         }
     } catch (error: any) {
         console.error('Error creating secret:', error);
+
         if (error.response?.status === 422 && error.response?.data?.errors?.custom_address) {
             toast.error(error.response.data.errors.custom_address[0]);
         } else {
@@ -286,7 +277,10 @@ const createdSecretId = ref('');
 const isDeleting = ref(false);
 
 async function handleDeleteSecret() {
-    if (!createdSecretId.value) return;
+    if (!createdSecretId.value) {
+return;
+}
+
     const isConfirmed = await confirm({
         title: 'Delete Secret',
         message: 'Are you sure you want to delete this secret? This action is permanent and will delete all associated files.',
@@ -294,8 +288,10 @@ async function handleDeleteSecret() {
         cancelText: 'Keep it',
         type: 'danger'
     });
+
     if (isConfirmed) {
         isDeleting.value = true;
+
         try {
             await axios.delete(`/api/secrets/${createdSecretId.value}`);
             toast.success('Secret deleted successfully.');
@@ -351,16 +347,22 @@ async function triggerFileInput() {
             cancelText: 'Cancel',
             type: 'info'
         });
+
         if (isConfirmed) {
             router.visit(login());
         }
+
         return;
     }
+
     fileInputRef.value?.click();
 }
 
 function handleFileSelect(e: Event) {
-    if (!usePage().props.auth?.user) return;
+    if (!usePage().props.auth?.user) {
+return;
+}
+
     const target = e.target as HTMLInputElement;
 
     if (target.files) {
@@ -379,9 +381,11 @@ async function handleFileDrop(e: DragEvent) {
             cancelText: 'Cancel',
             type: 'info'
         });
+
         if (isConfirmed) {
             router.visit(login());
         }
+
         return;
     }
 
@@ -424,20 +428,6 @@ return '0 Bytes';
     const i = Math.floor(Math.log(bytes) / Math.log(k));
 
     return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
-}
-
-function formatExpiryDate(dateStr?: string) {
-    if (!dateStr) {
-return '';
-}
-
-    try {
-        const date = new Date(dateStr);
-
-        return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-    } catch {
-        return '';
-    }
 }
 </script>
 

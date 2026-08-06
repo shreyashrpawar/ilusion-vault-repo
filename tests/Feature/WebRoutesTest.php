@@ -49,7 +49,7 @@ test('home page returns active secrets for authenticated user', function () {
 
     $response->assertOk();
     $response->assertInertia(fn (Assert $page) => $page
-        ->component('Welcome')
+        ->component('Dashboard')
         ->has('secrets', 1)
         ->where('secrets.0.secret_id', 'active_secret_id')
     );

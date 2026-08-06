@@ -11,9 +11,9 @@ class ContactMessage extends Mailable
 {
     use Queueable, SerializesModels;
 
-    public $name;
-    public $email;
-    public $messageBody;
+    public string $name;
+    public string $email;
+    public string $messageBody;
 
     /**
      * Create a new message instance.
@@ -28,7 +28,7 @@ class ContactMessage extends Mailable
     /**
      * Build the message.
      */
-    public function build()
+    public function build(): static
     {
         return $this->subject('Contact Form Submission from Ilusion Vault')
                     ->replyTo($this->email, $this->name)

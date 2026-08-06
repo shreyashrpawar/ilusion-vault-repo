@@ -3,15 +3,19 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use App\Models\VaultFile;
+use App\Models\User;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 
 class VaultController extends Controller
 {
-    public function index(Request $request)
+    public function index(Request $request): JsonResponse
     {
-        $user = auth()->user();
+        /** @var User $user */
+        $user = $request->user();
         $files = VaultFile::where('user_id', $user->id)->orderBy('created_at', 'desc')->get();
 
         $formattedFiles = $files->map(function ($file) {
@@ -33,9 +37,10 @@ class VaultController extends Controller
         return response()->json($formattedFiles);
     }
 
-    public function store(Request $request)
+    public function store(Request $request): JsonResponse
     {
-        $user = auth()->user();
+        /** @var User $user */
+        $user = $request->user();
 
         $request->validate([
             'files' => 'required|array',
@@ -63,13 +68,13 @@ class VaultController extends Controller
         return response()->json(['message' => 'Files securely added to vault.', 'files' => $savedFiles], 201);
     }
 
-    public function downloadFile(Request $request)
+    public function downloadFile(Request $request): StreamedResponse
     {
         if (!$request->hasHeader('X-Vault-Decrypted') && !$request->hasHeader('x-vault-decrypted')) {
             abort(403, 'Direct access to file downloads is not allowed. Files must be decrypted and requested through the application.');
         }
 
-        $path = $request->input('path');
+        $path = (string) $request->input('path');
 
         if (!Storage::disk('r2')->exists($path)) {
             abort(404, 'File not found.');
@@ -90,8 +95,9 @@ class VaultController extends Controller
         }, basename($path), $headers);
     }
 
-    public function destroy($id)
+    public function destroy(int|string $id): JsonResponse
     {
+        /** @var User $user */
         $user = auth()->user();
         $file = VaultFile::where('user_id', $user->id)->where('id', $id)->first();
 

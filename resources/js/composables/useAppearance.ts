@@ -10,7 +10,7 @@ export type UseAppearanceReturn = {
     updateAppearance: (value: Appearance) => void;
 };
 
-export function updateTheme(value: Appearance): void {
+export function updateTheme(): void {
     if (typeof window === 'undefined') {
         return;
     }
